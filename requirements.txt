@@ -1,0 +1,6 @@
+streamlit
+crewai
+duckduckgo-search
+plotly
+pandas
+pydantic
