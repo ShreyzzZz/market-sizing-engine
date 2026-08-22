@@ -3,4 +3,5 @@ crewai
 duckduckgo-search
 plotly
 pandas
-pydantic
+pydantic<2.12.0
+pydantic-settings
