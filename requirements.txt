@@ -1,5 +1,5 @@
 streamlit
-crewai
+crewai[google-genai]
 duckduckgo-search
 plotly
 pandas
