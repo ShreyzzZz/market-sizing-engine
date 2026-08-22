@@ -5,3 +5,4 @@ plotly
 pandas
 pydantic<2.12.0
 pydantic-settings
+google-generativeai
