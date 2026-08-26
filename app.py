@@ -95,30 +95,36 @@ class MarketDynamics(BaseModel):
     threats: List[str] = Field(..., description="List 2 to 4 key market threats.")
 
 # ==============================================================================
-# 3. HIGH-AUTHORITY SEARCH TOOL (WITH GOOGLE-COMPLIANT SCHEMA)
+# 3. HIGH-AUTHORITY SEARCH TOOL (CLASS-BASED FOR STRICT SCHEMA)
 # ==============================================================================
+from crewai.tools import BaseTool
+
 class SearchToolSchema(BaseModel):
     query: str = Field(..., description="The exact search string to query the web for.")
 
-@tool("Web Search", args_schema=SearchToolSchema)
-def free_search_tool(query: str) -> str:
-    """Searches the web for ACTUAL reported revenues strictly from top-tier institutional sources."""
-    try:
-        augmented_query = f"{query} (Gartner OR McKinsey OR Deloitte OR IDC OR Reuters OR Bloomberg OR SEC) FY2026 OR FY2025 OR LTM actual revenue -forecast -projected"
-        raw_results = list(DDGS().text(augmented_query, max_results=12, timelimit='y'))
-        
-        screened_results = []
-        for r in raw_results:
-            link, title, snippet = str(r.get('href', '')), str(r.get('title', '')), str(r.get('body', ''))
-            if is_high_authority_source(link, title, snippet):
-                screened_results.append((title, link, snippet))
-                
-        if not screened_results and raw_results:
-            for r in raw_results[:5]: screened_results.append((str(r.get('title', '')), str(r.get('href', '')), str(r.get('body', ''))))
+class FreeSearchTool(BaseTool):
+    name: str = "Web Search"
+    description: str = "Searches the web for ACTUAL reported revenues strictly from top-tier institutional sources."
+    args_schema: type[BaseModel] = SearchToolSchema
 
-        formatted_results = [f"Source [{idx}]: {t}\nURL: {l}\nData: {s}\n" for idx, (t, l, s) in enumerate(screened_results[:5], 1)]
-        return "\n---\n".join(formatted_results) if formatted_results else "No high-authority disclosures found."
-    except Exception as e: return f"Error: {str(e)}"
+    def _run(self, query: str) -> str:
+        try:
+            augmented_query = f"{query} (Gartner OR McKinsey OR Deloitte OR IDC OR Reuters OR Bloomberg OR SEC) FY2026 OR FY2025 OR LTM actual revenue -forecast -projected"
+            raw_results = list(DDGS().text(augmented_query, max_results=12, timelimit='y'))
+            
+            screened_results = []
+            for r in raw_results:
+                link, title, snippet = str(r.get('href', '')), str(r.get('title', '')), str(r.get('body', ''))
+                if is_high_authority_source(link, title, snippet):
+                    screened_results.append((title, link, snippet))
+                    
+            if not screened_results and raw_results:
+                for r in raw_results[:5]: screened_results.append((str(r.get('title', '')), str(r.get('href', '')), str(r.get('body', ''))))
+
+            formatted_results = [f"Source [{idx}]: {t}\nURL: {l}\nData: {s}\n" for idx, (t, l, s) in enumerate(screened_results[:5], 1)]
+            return "\n---\n".join(formatted_results) if formatted_results else "No high-authority disclosures found."
+        except Exception as e: 
+            return f"Error: {str(e)}"
 
 # ==============================================================================
 # 4. MARKDOWN COMPILERS 
