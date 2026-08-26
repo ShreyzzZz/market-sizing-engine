@@ -23,7 +23,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize Session State Variables for Two-Phase Flow
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 if "sizing_data" not in st.session_state:
@@ -44,21 +43,19 @@ with st.sidebar:
     
     if provider == "Google Gemini (Free Tier)":
         api_key_input = st.text_input("Gemini API Key", type="password")
-        model_name = "gemini/gemini-1.5-flash"  
+        model_name = "gemini/gemini-1.5-flash"  # <-- FIXED MODEL VERSION
         env_var_name = "GEMINI_API_KEY"
         custom_base_url = None
-        crew_rpm_limit = 4 
     else:
         api_key_input = st.text_input("Groq API Key", type="password")
         model_name = "openai/mixtral-8x7b-32768"
         env_var_name = "GROQ_API_KEY"
         custom_base_url = "https://api.groq.com/openai/v1"
-        crew_rpm_limit = 15 
 
     st.session_state.api_key_cache = api_key_input
 
 # ==============================================================================
-# 2. PYDANTIC SCHEMAS (SEPARATED FOR PHASE 1 AND PHASE 2)
+# 2. PYDANTIC SCHEMAS (CONSTRAINTS MOVED TO TEXT FOR GOOGLE COMPATIBILITY)
 # ==============================================================================
 HIGH_AUTHORITY_PATTERNS = [
     "mckinsey", "bcg.com", "bain.com", "deloitte", "pwc.com", "ey.com", "kpmg", "accenture",
@@ -82,25 +79,20 @@ class SubSegmentData(BaseModel):
 class MarketSegment(BaseModel):
     segment_name: str = Field(..., description="Strictly MECE main functional segment name")
     definition: str = Field(..., description="Boundary definition proving why this pillar never overlaps with others")
-    # Removed min_length/max_length to prevent Gemini ClientError
     sub_segments: List[SubSegmentData] = Field(..., description="Provide at least 2 distinct, strictly non-overlapping sub-segments.")
 
-# PHASE 1 SCHEMA: Only numbers and architecture
 class MarketSizingData(BaseModel):
     top_down_industry_tam_billions: float = Field(...)
     top_down_tam_period: str = Field(...)
     top_down_publisher: str = Field(...)
-    # Removed min_length/max_length to prevent Gemini ClientError
     segments: List[MarketSegment] = Field(..., description="Provide at least 2 strictly MECE main functional pillars.")
 
-# PHASE 2 SCHEMA: Only strategic insights
 class MarketDynamics(BaseModel):
     strategic_insight: str = Field(..., description="One powerful paragraph identifying the main insight drawn based on the user's chosen strategic intent.")
-    # Removed min_length/max_length to prevent Gemini ClientError
-    drivers: List[str] = Field(..., description="List exactly 2 to 4 key market drivers.")
-    restraints: List[str] = Field(..., description="List exactly 2 to 4 key market restraints.")
-    opportunities: List[str] = Field(..., description="List exactly 2 to 4 key market opportunities.")
-    threats: List[str] = Field(..., description="List exactly 2 to 4 key market threats.")
+    drivers: List[str] = Field(..., description="List 2 to 4 key market drivers.")
+    restraints: List[str] = Field(..., description="List 2 to 4 key market restraints.")
+    opportunities: List[str] = Field(..., description="List 2 to 4 key market opportunities.")
+    threats: List[str] = Field(..., description="List 2 to 4 key market threats.")
 
 # ==============================================================================
 # 3. SEARCH TOOL 
@@ -193,7 +185,10 @@ if st.button("🚀 Phase 1: Extract Market Architecture (TAM)", type="primary"):
     st.session_state.strategy_complete = False
     st.session_state.chat_history = []
     
-    engine_llm = LLM(model=model_name, api_key=api_key_input, base_url=custom_base_url, temperature=0.0)
+    llm_kwargs = {"model": model_name, "api_key": api_key_input, "temperature": 0.0}
+    if custom_base_url: llm_kwargs["base_url"] = custom_base_url
+    engine_llm = LLM(**llm_kwargs)
+    
     quantifier = Agent(role='Market Architect', goal='Map MECE pillars and extract revenues.', backstory='Elite auditor.', tools=[free_search_tool], llm=engine_llm)
     sizing_task = Task(description=f"Map MECE TAM for '{target_market}'.", expected_output="MarketSizingData JSON", agent=quantifier, output_pydantic=MarketSizingData)
     
@@ -227,21 +222,19 @@ if st.session_state.sizing_data:
     
     col1, col2 = st.columns(2)
     with col1:
-        st.markdown("### Market Distribution")
+        st.markdown("### 🍩 Market Distribution")
         fig1 = px.sunburst(sd["df"], path=['Main Pillar', 'Sub-Segment'], values='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
         fig1.update_traces(textinfo="label+percent parent+value"); st.plotly_chart(fig1, use_container_width=True)
     with col2:
-        st.markdown("### Pillar Valuation")
+        st.markdown("### 📊 Pillar Valuation")
         fig2 = px.bar(sd["df"].groupby('Main Pillar', as_index=False)['Revenue ($B)'].sum().sort_values('Revenue ($B)', ascending=False), x='Main Pillar', y='Revenue ($B)', text='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
         fig2.update_traces(texttemplate='$%{text:.2f}B', textposition='outside'); st.plotly_chart(fig2, use_container_width=True)
 
-    # 🛑 THE PAUSE: Wait for User Input before generating Strategy
     if not st.session_state.strategy_complete:
         st.markdown("---")
         st.markdown("## 🎯 Phase 2: Define Strategic Intent (Human-in-the-Loop)")
         st.info("The quantitative architecture is complete. How do you intend to action this market data?")
         
-        # User selects one of the 4 parameters here
         strategic_intent = st.radio(
             "Select your primary goal to generate a customized DROT analysis:", 
             ["Market Expansion", "New Product Launch", "Mergers & Acquisitions (M&A)", "Strategic Partnerships"]
@@ -249,7 +242,10 @@ if st.session_state.sizing_data:
         
         if st.button("⚡ Generate Custom Strategy & DROT", type="primary"):
             os.environ[env_var_name] = st.session_state.api_key_cache
-            strat_llm = LLM(model=model_name, api_key=st.session_state.api_key_cache, base_url=custom_base_url, temperature=0.3)
+            
+            llm_kwargs = {"model": model_name, "api_key": st.session_state.api_key_cache, "temperature": 0.3}
+            if custom_base_url: llm_kwargs["base_url"] = custom_base_url
+            strat_llm = LLM(**llm_kwargs)
             
             strat_agent = Agent(role='Chief Strategy Officer', goal='Generate actionable DROT based on intent.', backstory='Elite strategist.', llm=strat_llm)
             strat_task = Task(description=f"Analyze this market JSON: {sd['raw_json']}. The client's intent is: **{strategic_intent}**. Generate a highly specific DROT tailored ONLY to this intent.", expected_output="MarketDynamics JSON", agent=strat_agent, output_pydantic=MarketDynamics)
@@ -265,8 +261,6 @@ if st.session_state.sizing_data:
 # ==============================================================================
 if st.session_state.sizing_data and st.session_state.strategy_complete:
     sd = st.session_state.sizing_data
-    
-    # Combine Sizing, Strategy, and Citations
     full_dossier = f"{sd['sizing_md']}\n{st.session_state.drot_markdown}\n{sd['citations_md']}"
     
     st.markdown("---")
@@ -275,12 +269,12 @@ if st.session_state.sizing_data and st.session_state.strategy_complete:
     
     safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', sd["market"].lower())
     b1, b2, b3 = st.columns(3)
-    with b1: st.download_button("Download (MD)", full_dossier, f"Dossier_{safe_name}.md", "text/markdown", use_container_width=True)
-    with b2: st.download_button("Download (PDF)", export_to_pdf(full_dossier), f"Dossier_{safe_name}.pdf", "application/pdf", use_container_width=True)
-    with b3: st.download_button("Download (CSV)", sd["df"].to_csv(index=False).encode('utf-8'), f"Data_{safe_name}.csv", "text/csv", use_container_width=True)
+    with b1: st.download_button("📥 Download (MD)", full_dossier, f"Dossier_{safe_name}.md", "text/markdown", use_container_width=True)
+    with b2: st.download_button("📄 Download (PDF)", export_to_pdf(full_dossier), f"Dossier_{safe_name}.pdf", "application/pdf", use_container_width=True)
+    with b3: st.download_button("📊 Download (CSV)", sd["df"].to_csv(index=False).encode('utf-8'), f"Data_{safe_name}.csv", "text/csv", use_container_width=True)
 
     st.markdown("---")
-    st.subheader("Ask the Strategy Assistant")
+    st.subheader("💬 Ask the Strategy Assistant")
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
