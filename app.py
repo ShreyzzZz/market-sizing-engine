@@ -44,7 +44,7 @@ with st.sidebar:
     
     if provider == "Google Gemini (Free Tier)":
         api_key_input = st.text_input("Gemini API Key", type="password")
-        model_name = "gemini/gemini-3.6-flash"  
+        model_name = "gemini/gemini-1.5-flash"  
         env_var_name = "GEMINI_API_KEY"
         custom_base_url = None
         crew_rpm_limit = 4 
