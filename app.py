@@ -82,22 +82,25 @@ class SubSegmentData(BaseModel):
 class MarketSegment(BaseModel):
     segment_name: str = Field(..., description="Strictly MECE main functional segment name")
     definition: str = Field(..., description="Boundary definition proving why this pillar never overlaps with others")
-    sub_segments: List[SubSegmentData] = Field(..., min_length=2, max_length=15)
+    # Removed min_length/max_length to prevent Gemini ClientError
+    sub_segments: List[SubSegmentData] = Field(..., description="Provide at least 2 distinct, strictly non-overlapping sub-segments.")
 
 # PHASE 1 SCHEMA: Only numbers and architecture
 class MarketSizingData(BaseModel):
     top_down_industry_tam_billions: float = Field(...)
     top_down_tam_period: str = Field(...)
     top_down_publisher: str = Field(...)
-    segments: List[MarketSegment] = Field(..., min_length=2, max_length=10)
+    # Removed min_length/max_length to prevent Gemini ClientError
+    segments: List[MarketSegment] = Field(..., description="Provide at least 2 strictly MECE main functional pillars.")
 
 # PHASE 2 SCHEMA: Only strategic insights
 class MarketDynamics(BaseModel):
     strategic_insight: str = Field(..., description="One powerful paragraph identifying the main insight drawn based on the user's chosen strategic intent.")
-    drivers: List[str] = Field(..., min_length=2, max_length=4)
-    restraints: List[str] = Field(..., min_length=2, max_length=4)
-    opportunities: List[str] = Field(..., min_length=2, max_length=4)
-    threats: List[str] = Field(..., min_length=2, max_length=4)
+    # Removed min_length/max_length to prevent Gemini ClientError
+    drivers: List[str] = Field(..., description="List exactly 2 to 4 key market drivers.")
+    restraints: List[str] = Field(..., description="List exactly 2 to 4 key market restraints.")
+    opportunities: List[str] = Field(..., description="List exactly 2 to 4 key market opportunities.")
+    threats: List[str] = Field(..., description="List exactly 2 to 4 key market threats.")
 
 # ==============================================================================
 # 3. SEARCH TOOL 
