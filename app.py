@@ -48,7 +48,7 @@ with st.sidebar:
         custom_base_url = None
     else:
         api_key_input = st.text_input("Groq API Key", type="password")
-        model_name = "openai/mixtral-8x7b-32768"
+        model_name = "openai/llama-3.3-70b-versatile"
         env_var_name = "GROQ_API_KEY"
         custom_base_url = "https://api.groq.com/openai/v1"
 
