@@ -10,7 +10,7 @@ import pandas as pd
 from pydantic import BaseModel, Field
 from typing import List
 from crewai import Agent, Task, Crew, Process, LLM
-from crewai.tools import tool
+from crewai.tools import BaseTool
 from duckduckgo_search import DDGS
 from markdown_pdf import MarkdownPdf, Section
 
@@ -43,19 +43,21 @@ with st.sidebar:
     
     if provider == "Google Gemini (Free Tier)":
         api_key_input = st.text_input("Gemini API Key", type="password")
-        model_name = "gemini/gemini-3.5-flash"
+        model_name = "gemini/gemini-3.5-flash"  
         env_var_name = "GEMINI_API_KEY"
         custom_base_url = None
+        crew_rpm_limit = 4  # <-- OPTION 2: Strict throttle for Gemini Free Tier limits
     else:
         api_key_input = st.text_input("Groq API Key", type="password")
         model_name = "openai/openai/gpt-oss-120b"
         env_var_name = "GROQ_API_KEY"
         custom_base_url = "https://api.groq.com/openai/v1"
+        crew_rpm_limit = None # <-- Groq handles high throughput, no throttle needed
 
     st.session_state.api_key_cache = api_key_input
 
 # ==============================================================================
-# 2. PYDANTIC SCHEMAS (CONSTRAINTS MOVED TO TEXT FOR GOOGLE COMPATIBILITY)
+# 2. PYDANTIC SCHEMAS (GOOGLE COMPATIBLE)
 # ==============================================================================
 HIGH_AUTHORITY_PATTERNS = [
     "mckinsey", "bcg.com", "bain.com", "deloitte", "pwc.com", "ey.com", "kpmg", "accenture",
@@ -95,10 +97,8 @@ class MarketDynamics(BaseModel):
     threats: List[str] = Field(..., description="List 2 to 4 key market threats.")
 
 # ==============================================================================
-# 3. HIGH-AUTHORITY SEARCH TOOL (CLASS-BASED FOR STRICT SCHEMA)
+# 3. HIGH-AUTHORITY SEARCH TOOL (CLASS-BASED STRICT SCHEMA)
 # ==============================================================================
-from crewai.tools import BaseTool
-
 class SearchToolSchema(BaseModel):
     query: str = Field(..., description="The exact search string to query the web for.")
 
@@ -202,7 +202,14 @@ if st.button("🚀 Phase 1: Extract Market Architecture (TAM)", type="primary"):
     sizing_task = Task(description=f"Map MECE TAM for '{target_market}'.", expected_output="MarketSizingData JSON", agent=quantifier, output_pydantic=MarketSizingData)
     
     with st.status("⚡ Extracting Market Architecture...", expanded=True) as status:
-        res = Crew(agents=[quantifier], tasks=[sizing_task], process=Process.sequential).kickoff()
+        # OPTION 2 APPLIED: Passing max_rpm to the Crew
+        res = Crew(
+            agents=[quantifier], 
+            tasks=[sizing_task], 
+            process=Process.sequential, 
+            max_rpm=crew_rpm_limit
+        ).kickoff()
+        
         struct_data: MarketSizingData = res.pydantic
         
         target_tam = struct_data.top_down_industry_tam_billions
@@ -260,7 +267,14 @@ if st.session_state.sizing_data:
             strat_task = Task(description=f"Analyze this market JSON: {sd['raw_json']}. The client's intent is: **{strategic_intent}**. Generate a highly specific DROT tailored ONLY to this intent.", expected_output="MarketDynamics JSON", agent=strat_agent, output_pydantic=MarketDynamics)
             
             with st.spinner(f"Synthesizing {strategic_intent} Strategy..."):
-                strat_res = Crew(agents=[strat_agent], tasks=[strat_task], process=Process.sequential).kickoff()
+                # OPTION 2 APPLIED: Passing max_rpm to the Strategy Crew
+                strat_res = Crew(
+                    agents=[strat_agent], 
+                    tasks=[strat_task], 
+                    process=Process.sequential,
+                    max_rpm=crew_rpm_limit
+                ).kickoff()
+                
                 st.session_state.drot_markdown = compile_drot_report(strat_res.pydantic, strategic_intent)
                 st.session_state.strategy_complete = True
                 st.rerun()
