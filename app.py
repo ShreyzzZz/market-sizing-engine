@@ -95,9 +95,12 @@ class MarketDynamics(BaseModel):
     threats: List[str] = Field(..., description="List 2 to 4 key market threats.")
 
 # ==============================================================================
-# 3. SEARCH TOOL 
+# 3. HIGH-AUTHORITY SEARCH TOOL (WITH GOOGLE-COMPLIANT SCHEMA)
 # ==============================================================================
-@tool("Web Search")
+class SearchToolSchema(BaseModel):
+    query: str = Field(..., description="The exact search string to query the web for.")
+
+@tool("Web Search", args_schema=SearchToolSchema)
 def free_search_tool(query: str) -> str:
     """Searches the web for ACTUAL reported revenues strictly from top-tier institutional sources."""
     try:
