@@ -23,19 +23,23 @@ st.set_page_config(
     layout="wide"
 )
 
-# Initialize Session State Variables to prevent resets during chat
+# Initialize Session State Variables for Two-Phase Flow
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
-if "report_data" not in st.session_state:
-    st.session_state.report_data = None
+if "sizing_data" not in st.session_state:
+    st.session_state.sizing_data = None
+if "strategy_complete" not in st.session_state:
+    st.session_state.strategy_complete = False
+if "drot_markdown" not in st.session_state:
+    st.session_state.drot_markdown = ""
 if "api_key_cache" not in st.session_state:
     st.session_state.api_key_cache = ""
 
 st.title("📈 Institutional Market Sizing Engine")
-st.markdown("This engine maps the organic architecture of the market using **Temporal Waterfall Logic (Prioritizing 2026/2025 Actuals)**. Citations are screened in Python to ensure data originates ONLY from **Big 3 / Big 4 consulting firms, top analyst research houses, SEC filings, and official investor relations**.")
+st.markdown("This engine utilizes a **Two-Phase Architecture**: 1. Quantitative MECE TAM Extraction. 2. Intent-Driven Strategic DROT Synthesis.")
 
 with st.sidebar:
-    st.header("🔑 Zero-Cost Configuration")
+    st.header("🔑 API Configuration")
     provider = st.radio("Select Free API Provider:", ["Google Gemini (Free Tier)", "Groq Cloud (100% Free Backup)"])
     
     if provider == "Google Gemini (Free Tier)":
@@ -54,14 +58,12 @@ with st.sidebar:
     st.session_state.api_key_cache = api_key_input
 
 # ==============================================================================
-# 2. PYDANTIC SCHEMAS (WITH DROT & STRATEGIC INSIGHTS)
+# 2. PYDANTIC SCHEMAS (SEPARATED FOR PHASE 1 AND PHASE 2)
 # ==============================================================================
 HIGH_AUTHORITY_PATTERNS = [
     "mckinsey", "bcg.com", "bain.com", "deloitte", "pwc.com", "ey.com", "kpmg", "accenture",
     "gartner", "idc.com", "forrester", "statista", "bloomberg", "reuters", "pitchbook", 
-    "cbinsights", "spglobal", "fitchratings", "moodys", "grandviewresearch", 
-    "fortune-business-insights", "mordorintelligence", "marketsandmarkets", "precedence-research",
-    "sec.gov", "investor.", "wsj.com", "ft.com", "cnbc.com", "forbes.com", "finance.yahoo.com"
+    "sec.gov", "investor.", "wsj.com", "ft.com", "cnbc.com", "forbes.com"
 ]
 
 def is_high_authority_source(url: str, title: str, snippet: str) -> bool:
@@ -70,34 +72,35 @@ def is_high_authority_source(url: str, title: str, snippet: str) -> bool:
 
 class SubSegmentData(BaseModel):
     sub_segment_name: str = Field(..., description="Name of the specific functional sub-segment")
-    top_vendors: List[str] = Field(..., description="Top key market players operating STRICTLY in this sub-segment")
-    estimated_subsegment_market_size_billions: float = Field(..., description="ACTUAL reported TOTAL market valuation for this entire sub-segment industry-wide in BILLIONS USD.")
-    reporting_period: str = Field(..., description="Must be the latest available actual period: 'FY2026', 'LTM', 'FY2025', or 'FY2024'.")
-    publisher_name: str = Field(..., description="Name of recognized institutional source (e.g., McKinsey, Gartner, SEC).")
-    source_url: str = Field(..., description="Deep hyperlink URL from a high-authority domain.")
-    verification_snippet: str = Field(..., description="Verbatim textual quote proving ACTUAL reported figures.")
+    top_vendors: List[str] = Field(..., description="Top key market players operating in this sub-segment")
+    estimated_subsegment_market_size_billions: float = Field(..., description="Actual reported market valuation in BILLIONS USD.")
+    reporting_period: str = Field(..., description="Latest available period: 'FY2026', 'LTM', 'FY2025'")
+    publisher_name: str = Field(..., description="Recognized institutional source.")
+    source_url: str = Field(..., description="Hyperlink URL from a high-authority domain.")
+    verification_snippet: str = Field(..., description="Verbatim textual quote proving reported figures.")
 
 class MarketSegment(BaseModel):
     segment_name: str = Field(..., description="Strictly MECE main functional segment name")
-    definition: str = Field(..., description="Boundary definition explicitly proving why this pillar NEVER overlaps with others")
-    sub_segments: List[SubSegmentData] = Field(..., min_length=1, max_length=15, description="As many distinct, strictly non-overlapping sub-segments as required to map this pillar accurately (minimum 1).")
+    definition: str = Field(..., description="Boundary definition proving why this pillar never overlaps with others")
+    sub_segments: List[SubSegmentData] = Field(..., min_length=2, max_length=15)
 
-class MarketDynamics(BaseModel):
-    strategic_insight: str = Field(..., description="One powerful paragraph identifying the main insight drawn from the market scenario. MUST specifically focus on recommended expansion whitespace, product launch viability, M&A targets, or partnership strategies based on the institutional data gathered.")
-    drivers: List[str] = Field(..., min_length=2, max_length=4, description="2-4 key market drivers propelling growth.")
-    restraints: List[str] = Field(..., min_length=2, max_length=4, description="2-4 key market restraints or bottlenecks.")
-    opportunities: List[str] = Field(..., min_length=2, max_length=4, description="2-4 key market opportunities (e.g., whitespace, emerging tech).")
-    threats: List[str] = Field(..., min_length=2, max_length=4, description="2-4 key market threats (e.g., regulatory risks, substitution).")
-
+# PHASE 1 SCHEMA: Only numbers and architecture
 class MarketSizingData(BaseModel):
-    top_down_industry_tam_billions: float = Field(..., description="ACTUAL verified global top-down industry TAM in BILLIONS USD. TRILLION RULE: Multiply Trillions by 1000.")
-    top_down_tam_period: str = Field(..., description="Reported period for top-down TAM (Preferably 'FY2026' or 'FY2025').")
-    top_down_publisher: str = Field(..., description="Name of the top-tier firm providing the TAM benchmark.")
-    segments: List[MarketSegment] = Field(..., min_length=2, max_length=10, description="As many strictly MECE main functional pillars as required to cover the market without overlap (minimum 2).")
-    market_dynamics: MarketDynamics = Field(..., description="Strategic intelligence and DROT analysis deduced from the institutional data.")
+    top_down_industry_tam_billions: float = Field(...)
+    top_down_tam_period: str = Field(...)
+    top_down_publisher: str = Field(...)
+    segments: List[MarketSegment] = Field(..., min_length=2, max_length=10)
+
+# PHASE 2 SCHEMA: Only strategic insights
+class MarketDynamics(BaseModel):
+    strategic_insight: str = Field(..., description="One powerful paragraph identifying the main insight drawn based on the user's chosen strategic intent.")
+    drivers: List[str] = Field(..., min_length=2, max_length=4)
+    restraints: List[str] = Field(..., min_length=2, max_length=4)
+    opportunities: List[str] = Field(..., min_length=2, max_length=4)
+    threats: List[str] = Field(..., min_length=2, max_length=4)
 
 # ==============================================================================
-# 3. HIGH-AUTHORITY SEARCH TOOL WITH TEMPORAL WATERFALL
+# 3. SEARCH TOOL 
 # ==============================================================================
 @tool("Web Search")
 def free_search_tool(query: str) -> str:
@@ -106,117 +109,68 @@ def free_search_tool(query: str) -> str:
         augmented_query = f"{query} (Gartner OR McKinsey OR Deloitte OR IDC OR Reuters OR Bloomberg OR SEC) FY2026 OR FY2025 OR LTM actual revenue -forecast -projected"
         raw_results = list(DDGS().text(augmented_query, max_results=12, timelimit='y'))
         
-        if not raw_results:
-            fallback_query = f"{query} market size actual revenue (FY2026 OR FY2025 OR FY2024) (Gartner OR Deloitte OR IDC OR Reuters)"
-            raw_results = list(DDGS().text(fallback_query, max_results=10))
-            
         screened_results = []
         for r in raw_results:
-            link = str(r.get('href', r.get('link', ''))).strip()
-            title = str(r.get('title', '')).strip()
-            snippet = str(r.get('body', r.get('snippet', ''))).strip()
+            link, title, snippet = str(r.get('href', '')), str(r.get('title', '')), str(r.get('body', ''))
             if is_high_authority_source(link, title, snippet):
                 screened_results.append((title, link, snippet))
                 
         if not screened_results and raw_results:
-            for r in raw_results[:5]:
-                screened_results.append((str(r.get('title', '')), str(r.get('href', r.get('link', ''))), str(r.get('body', r.get('snippet', '')))))
+            for r in raw_results[:5]: screened_results.append((str(r.get('title', '')), str(r.get('href', '')), str(r.get('body', ''))))
 
-        formatted_results = []
-        for idx, (title, link, snippet) in enumerate(screened_results[:5], 1):
-            clean_link = link.replace('\n', '').replace(' ', '')
-            formatted_results.append(f"High-Authority Source [{idx}]: {title}\nURL: {clean_link}\nData Snippet: {snippet}\n")
-            
+        formatted_results = [f"Source [{idx}]: {t}\nURL: {l}\nData: {s}\n" for idx, (t, l, s) in enumerate(screened_results[:5], 1)]
         return "\n---\n".join(formatted_results) if formatted_results else "No high-authority disclosures found."
-    except Exception as e:
-        return f"Error conducting web search: {str(e)}"
+    except Exception as e: return f"Error: {str(e)}"
 
 # ==============================================================================
-# 4. EXPORT ENGINE (PDF & TRANSCRIPT BUILDER)
+# 4. MARKDOWN COMPILERS 
 # ==============================================================================
-PROHIBITED_FUTURE_PATTERNS = [r"expected to reach", r"projected to grow", r"projected to reach", r"forecasted to", r"is expected to", r"estimated to reach", r"by 2027", r"by 2028", r"by 2029", r"by 2030"]
-
-def compile_reconciled_report(data: MarketSizingData, market_name: str, scalar: float, final_tam: float, unit_correction: bool) -> str:
+def compile_sizing_report(data: MarketSizingData, market_name: str, scalar: float, final_tam: float, unit_correction: bool):
     md = [f"# Strict MECE Market Brief: {market_name}\n"]
     md.append(f"> **Reconciled Reported TAM ({data.top_down_tam_period}):** **${final_tam:.2f} Billion**")
     md.append(f"> *Primary Industry Benchmark Source: **{data.top_down_publisher}***\n")
-    if unit_correction:
-        md.append(f"> ⚠️ *Audit Correction: LLM unit-scale truncation intercepted and auto-corrected.*\n")
-    md.append("## Dynamic Sub-Segment Revenue Architecture (Strictly Non-Overlapping)\n")
+    if unit_correction: md.append(f"> ⚠️ *Audit Correction: LLM unit-scale truncation auto-corrected.*\n")
+    md.append("## Dynamic Sub-Segment Revenue Architecture\n")
     
-    all_citations = []
-    citation_idx = 1
-    main_segment_totals = []
+    all_citations, citation_idx, main_segment_totals = [], 1, []
 
     for seg in data.segments:
         seg_raw_sum = sum(sub.estimated_subsegment_market_size_billions for sub in seg.sub_segments)
         seg_reconciled_sum = seg_raw_sum * scalar
         main_segment_totals.append((seg.segment_name, seg_reconciled_sum))
         
-        md.append(f"### 📌 Pillar: {seg.segment_name}")
-        md.append(f"**MECE Definition:** *{seg.definition}*\n")
-        md.append("| Sub-Segment Name | Key Vendors | Reconciled Sub-TAM | Actual Period | Recognized Source | Citation |")
-        md.append("| :--- | :--- | :--- | :--- | :--- | :--- |")
+        md.extend([f"### 📌 Pillar: {seg.segment_name}", f"**MECE Definition:** *{seg.definition}*\n"])
+        md.extend(["| Sub-Segment | Key Vendors | Reconciled Sub-TAM | Period | Source | Cit. |", "| :--- | :--- | :--- | :--- | :--- | :--- |"])
         
         for sub in seg.sub_segments:
-            sub_reconciled_rev = sub.estimated_subsegment_market_size_billions * scalar
-            snippet_lower = sub.verification_snippet.lower()
-            status_flag = " ⚠️ [FORECAST DETECTED]" if any(re.search(pat, snippet_lower) for pat in PROHIBITED_FUTURE_PATTERNS) else ""
+            sub_rev = sub.estimated_subsegment_market_size_billions * scalar
+            rev_str = f"${sub_rev:.2f}B" if sub_rev >= 1.0 else f"${sub_rev*1000:.0f}M"
             v_str = ", ".join(sub.top_vendors)
-            rev_str = f"${sub_reconciled_rev:.2f}B" if sub_reconciled_rev >= 1.0 else f"${sub_reconciled_rev*1000:.0f}M"
-            
-            md.append(f"| **{sub.sub_segment_name}**{status_flag} | {v_str} | **{rev_str}** | `{sub.reporting_period}` | **{sub.publisher_name}** | `[{citation_idx}]` |")
-            
-            all_citations.append(f"**[{citation_idx}] {sub.sub_segment_name} — {rev_str} ({sub.reporting_period})**\n* **Institutional Source:** {sub.publisher_name}\n* **Key Vendors:** {v_str}\n* **Evidentiary Snippet:** *\"{sub.verification_snippet}\"*\n* **Verified Source URL:** [{sub.source_url}]({sub.source_url})\n")
+            md.append(f"| **{sub.sub_segment_name}** | {v_str} | **{rev_str}** | `{sub.reporting_period}` | **{sub.publisher_name}** | `[{citation_idx}]` |")
+            all_citations.append(f"**[{citation_idx}] {sub.sub_segment_name} — {rev_str}**\n* **Vendors:** {v_str}\n* **Snippet:** *\"{sub.verification_snippet}\"*\n* **URL:** [{sub.source_url}]({sub.source_url})\n")
             citation_idx += 1
             
-        seg_tot_str = f"${seg_reconciled_sum:.2f}B" if seg_reconciled_sum >= 1.0 else f"${seg_reconciled_sum*1000:.0f}M"
-        md.append(f"| **TOTAL FOR PILLAR** | *All Pillar Vendors* | **{seg_tot_str}** | *Aggregated* | *Institutional Mix* | *N/A* |\n")
+        seg_tot = f"${seg_reconciled_sum:.2f}B" if seg_reconciled_sum >= 1.0 else f"${seg_reconciled_sum*1000:.0f}M"
+        md.append(f"| **TOTAL FOR PILLAR** | *All Pillar Vendors* | **{seg_tot}** | *Aggregated* | *N/A* | *N/A* |\n")
 
-    md.append("## Consolidated TAM Synthesis\n")
-    md.append("| Strictly MECE Main Pillar | Reconciled Reported Revenue | % Share of Total TAM | Methodology |")
-    md.append("| :--- | :--- | :--- | :--- |")
-    
+    md.extend(["## Consolidated TAM Synthesis\n", "| Strictly MECE Main Pillar | Reconciled Revenue | % Share of TAM |", "| :--- | :--- | :--- |"])
     for seg_name, seg_rev in main_segment_totals:
-        share_pct = (seg_rev / final_tam) * 100.0 if final_tam > 0 else 0
-        rev_str = f"${seg_rev:.2f}B" if seg_rev >= 1.0 else f"${seg_rev*1000:.0f}M"
-        md.append(f"| **{seg_name}** | **{rev_str}** | {share_pct:.1f}% | *Sum of Sub-Segments* |")
-        
-    md.append(f"| **TOTAL ADDRESSABLE MARKET** | **${final_tam:.2f}B** | **100.0%** | **Reconciled Top-Down Benchmark** |\n")
-    md.append("---\n")
-    md.append("## 🧠 Strategic Market Insights & DROT Analysis\n")
-    md.append(f"**Strategic Actionability (M&A / Expansion / Partnerships):**\n{data.market_dynamics.strategic_insight}\n")
-    md.append("### Market Dynamics")
-    md.append("**🚀 Key Drivers:**")
-    for d in data.market_dynamics.drivers: md.append(f"- {d}")
-    md.append("\n**🚧 Restraints & Bottlenecks:**")
-    for r in data.market_dynamics.restraints: md.append(f"- {r}")
-    md.append("\n**💡 Opportunities & Whitespace:**")
-    for o in data.market_dynamics.opportunities: md.append(f"- {o}")
-    md.append("\n**⚠️ Market Threats:**")
-    for t in data.market_dynamics.threats: md.append(f"- {t}")
-    md.append("\n---\n")
-    md.append("## Institutional Sources & High-Authority Audit Trail\n")
-    for cit in all_citations: md.append(f"{cit}")
-        
-    return "\n".join(md)
+        md.append(f"| **{seg_name}** | **${seg_rev:.2f}B** | {(seg_rev/final_tam)*100:.1f}% |")
+    md.append(f"| **TOTAL TAM** | **${final_tam:.2f}B** | **100.0%** |\n---\n")
+    
+    citations_md = "\n## Institutional Audit Trail\n" + "\n".join(all_citations)
+    return "\n".join(md), citations_md
 
-def generate_combined_report(base_markdown: str, chat_history: list) -> str:
-    """Combines the primary market sizing brief with the interactive chat session transcript."""
-    if not chat_history:
-        return base_markdown
-        
-    transcript = [base_markdown, "\n---\n## 💬 Analyst Dialogue & Q&A Transcript\n"]
-    for entry in chat_history:
-        if entry["role"] == "user":
-            transcript.append(f"### 👤 User Inquiry\n> {entry['content']}\n")
-        elif entry["role"] == "assistant":
-            transcript.append(f"### 🤖 Intelligence Engine Assessment\n{entry['content']}\n")
-            
-    return "\n".join(transcript)
+def compile_drot_report(drot: MarketDynamics, intent: str) -> str:
+    md = [f"## 🧠 Strategic Market Insights & DROT Analysis (Target: {intent})\n"]
+    md.extend([f"**Strategic Actionability:**\n{drot.strategic_insight}\n", "### Market Dynamics"])
+    md.append("**🚀 Key Drivers:**"); md.extend([f"- {d}" for d in drot.drivers])
+    md.append("\n**🚧 Restraints & Bottlenecks:**"); md.extend([f"- {r}" for r in drot.restraints])
+    md.append("\n**💡 Opportunities & Whitespace:**"); md.extend([f"- {o}" for o in drot.opportunities])
+    md.append("\n**⚠️ Market Threats:**"); md.extend([f"- {t}" for t in drot.threats])
+    return "\n".join(md) + "\n\n---\n"
 
 def export_to_pdf(markdown_text: str) -> bytes:
-    """Converts the markdown dossier into a formatted PDF document."""
     pdf = MarkdownPdf(toc_level=2)
     pdf.add_section(Section(markdown_text, toc=False))
     out = io.BytesIO()
@@ -224,177 +178,122 @@ def export_to_pdf(markdown_text: str) -> bytes:
     return out.getvalue()
 
 # ==============================================================================
-# 5. WORKFLOW RUNNER
+# 5. PHASE 1: TAM & SEGMENTATION LOGIC
 # ==============================================================================
 target_market = st.text_input("🎯 Enter Target Market:", placeholder="e.g., Global Electric Vehicle Battery Market")
 
-if st.button("🚀 Run Enterprise Sizing Engine", type="primary"):
-    if not api_key_input or not target_market.strip():
-        st.error("Please provide an API key and target market.")
-        st.stop()
-
+if st.button("🚀 Phase 1: Extract Market Architecture (TAM)", type="primary"):
+    if not api_key_input or not target_market.strip(): st.error("Provide API key and market."); st.stop()
     os.environ[env_var_name] = api_key_input
-    st.session_state.chat_history = [] 
     
-    engine_llm = LLM(model=model_name, api_key=api_key_input, base_url=custom_base_url, temperature=0.0, max_retries=5, timeout=300)
-
-    quantifier_agent = Agent(
-        role='Director of Market Architecture & Financial Audit',
-        goal='Map the market into strictly MECE pillars, extract LATEST verified revenues, and synthesize strategic insights.',
-        backstory=('You are an elite market architect and institutional auditor. You map industries based on their TRUE organic structure. CRITICAL DIRECTIVE: Every single pillar and sub-segment you create MUST BE STRICTLY MECE.'),
-        verbose=True,
-        tools=[free_search_tool],
-        llm=engine_llm
-    )
-
-    sizing_task = Task(
-        description=(f"Conduct comprehensive, deep-dive MECE market sizing and strategic analysis for '{target_market}'.\n1. Search for actual reported global TAM benchmarks.\n2. Map 4 pillars with 3+ sub-segments each.\n3. Estimate actual reported spend.\n4. DROT and strategic insight synthesis."),
-        expected_output="A highly granular MarketSizingData Pydantic object.",
-        agent=quantifier_agent,
-        output_pydantic=MarketSizingData
-    )
-
-    crew = Crew(agents=[quantifier_agent], tasks=[sizing_task], process=Process.sequential, max_rpm=crew_rpm_limit)
-
-    with st.status("⚡ Running Enterprise Sizing Engine...", expanded=True) as status:
-        try:
-            result = crew.kickoff()
-            structured_data: MarketSizingData = result.pydantic
-            
-            target_tam = structured_data.top_down_industry_tam_billions
-            raw_sum = sum(sub.estimated_subsegment_market_size_billions for seg in structured_data.segments for sub in seg.sub_segments)
-            
-            unit_correction = False
-            if raw_sum > (target_tam * 50.0) and raw_sum > 10.0: target_tam *= 1000.0; unit_correction = True
-            elif (target_tam > (raw_sum * 50.0)) and target_tam > 100.0 and raw_sum < 10.0: raw_sum *= 1000.0; unit_correction = True
-                
-            scalar = (target_tam / raw_sum) if raw_sum > 0 else 1.0
-
-            chart_data = []
-            for seg in structured_data.segments:
-                for sub in seg.sub_segments:
-                    chart_data.append({"Main Pillar": seg.segment_name, "Sub-Segment": sub.sub_segment_name, "Revenue ($B)": sub.estimated_subsegment_market_size_billions * scalar})
-            df = pd.DataFrame(chart_data)
-            
-            final_markdown_report = compile_reconciled_report(structured_data, target_market, scalar, target_tam, unit_correction)
-            
-            # 💾 Save everything to session state so it survives the chatbot re-renders
-            st.session_state.report_data = {
-                "target_market": target_market,
-                "df": df,
-                "markdown": final_markdown_report
-            }
-            status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
-            
-        except Exception as e:
-            status.update(label="⚠️ Execution Notice", state="error", expanded=True)
-            st.error(f"An error occurred:\n\n`{str(e)}`")
-
-# ==============================================================================
-# 6. RENDER DASHBOARD & CHATBOT (FROM SESSION STATE)
-# ==============================================================================
-if st.session_state.report_data:
-    rd = st.session_state.report_data
+    st.session_state.sizing_data = None
+    st.session_state.strategy_complete = False
+    st.session_state.chat_history = []
     
-    st.markdown("[**⬇️ Jump directly to the Visual Dashboard**](#market-distribution)")
+    engine_llm = LLM(model=model_name, api_key=api_key_input, base_url=custom_base_url, temperature=0.0)
+    quantifier = Agent(role='Market Architect', goal='Map MECE pillars and extract revenues.', backstory='Elite auditor.', tools=[free_search_tool], llm=engine_llm)
+    sizing_task = Task(description=f"Map MECE TAM for '{target_market}'.", expected_output="MarketSizingData JSON", agent=quantifier, output_pydantic=MarketSizingData)
     
-    chart_col1, chart_col2 = st.columns(2)
-    with chart_col1:
-        st.markdown("### 🍩 Market Distribution")
-        fig_sunburst = px.sunburst(rd["df"], path=['Main Pillar', 'Sub-Segment'], values='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
-        fig_sunburst.update_traces(textinfo="label+percent parent+value")
-        fig_sunburst.update_layout(margin=dict(t=10, l=10, r=10, b=10))
-        st.plotly_chart(fig_sunburst, use_container_width=True)
+    with st.status("⚡ Extracting Market Architecture...", expanded=True) as status:
+        res = Crew(agents=[quantifier], tasks=[sizing_task], process=Process.sequential).kickoff()
+        struct_data: MarketSizingData = res.pydantic
         
-    with chart_col2:
-        st.markdown("### 📊 Pillar Valuation")
-        fig_bar = px.bar(rd["df"].groupby('Main Pillar', as_index=False)['Revenue ($B)'].sum().sort_values('Revenue ($B)', ascending=False), x='Main Pillar', y='Revenue ($B)', text='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
-        fig_bar.update_traces(texttemplate='$%{text:.2f}B', textposition='outside')
-        max_val = rd["df"].groupby('Main Pillar')['Revenue ($B)'].sum().max()
-        fig_bar.update_layout(showlegend=False, xaxis_title="", yaxis_title="Billions (USD)", yaxis=dict(range=[0, max_val * 1.15]), margin=dict(t=10, l=10, r=10, b=10))
-        st.plotly_chart(fig_bar, use_container_width=True)
+        target_tam = struct_data.top_down_industry_tam_billions
+        raw_sum = sum(sub.estimated_subsegment_market_size_billions for seg in struct_data.segments for sub in seg.sub_segments)
+        uc = False
+        if raw_sum > (target_tam * 50) and raw_sum > 10: target_tam *= 1000; uc = True
+        elif target_tam > (raw_sum * 50) and target_tam > 100 and raw_sum < 10: raw_sum *= 1000; uc = True
+        scalar = (target_tam / raw_sum) if raw_sum > 0 else 1.0
 
-    st.subheader(f"📊 Institutional Market Intelligence Brief: {rd['target_market']}")
-    
-    combined_dossier = generate_combined_report(rd["markdown"], st.session_state.chat_history)
-    safe_market_name = re.sub(r'[^a-zA-Z0-9_-]', '_', rd["target_market"].lower())
+        chart_data = [{"Main Pillar": seg.segment_name, "Sub-Segment": sub.sub_segment_name, "Revenue ($B)": sub.estimated_subsegment_market_size_billions * scalar} for seg in struct_data.segments for sub in seg.sub_segments]
+        
+        sizing_md, citations_md = compile_sizing_report(struct_data, target_market, scalar, target_tam, uc)
+        
+        st.session_state.sizing_data = {
+            "market": target_market, "df": pd.DataFrame(chart_data), 
+            "sizing_md": sizing_md, "citations_md": citations_md, "raw_json": struct_data.model_dump_json()
+        }
+        status.update(label="✅ Phase 1 Complete!", state="complete")
+        st.rerun()
 
-    # Download Bar
-    btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([0.1, 0.3, 0.3, 0.3])
+# ==============================================================================
+# 6. DASHBOARD & PHASE 2: HUMAN-IN-THE-LOOP PARAMETER SELECTION
+# ==============================================================================
+if st.session_state.sizing_data:
+    sd = st.session_state.sizing_data
     
-    with btn_col2:
-        st.download_button(
-            label="📥 Download Dossier (MD)",
-            data=combined_dossier,
-            file_name=f"Enterprise_Dossier_{safe_market_name}.md",
-            mime="text/markdown",
-            use_container_width=True
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("### Market Distribution")
+        fig1 = px.sunburst(sd["df"], path=['Main Pillar', 'Sub-Segment'], values='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
+        fig1.update_traces(textinfo="label+percent parent+value"); st.plotly_chart(fig1, use_container_width=True)
+    with col2:
+        st.markdown("### Pillar Valuation")
+        fig2 = px.bar(sd["df"].groupby('Main Pillar', as_index=False)['Revenue ($B)'].sum().sort_values('Revenue ($B)', ascending=False), x='Main Pillar', y='Revenue ($B)', text='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
+        fig2.update_traces(texttemplate='$%{text:.2f}B', textposition='outside'); st.plotly_chart(fig2, use_container_width=True)
+
+    # 🛑 THE PAUSE: Wait for User Input before generating Strategy
+    if not st.session_state.strategy_complete:
+        st.markdown("---")
+        st.markdown("## 🎯 Phase 2: Define Strategic Intent (Human-in-the-Loop)")
+        st.info("The quantitative architecture is complete. How do you intend to action this market data?")
+        
+        # User selects one of the 4 parameters here
+        strategic_intent = st.radio(
+            "Select your primary goal to generate a customized DROT analysis:", 
+            ["Market Expansion", "New Product Launch", "Mergers & Acquisitions (M&A)", "Strategic Partnerships"]
         )
-    with btn_col3:
-        st.download_button(
-            label="📄 Download Dossier (PDF)",
-            data=export_to_pdf(combined_dossier),
-            file_name=f"Enterprise_Dossier_{safe_market_name}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-    with btn_col4:
-        csv_data = rd["df"].to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📊 Download Data (CSV)",
-            data=csv_data,
-            file_name=f"Reconciled_Data_{safe_market_name}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
+        
+        if st.button("⚡ Generate Custom Strategy & DROT", type="primary"):
+            os.environ[env_var_name] = st.session_state.api_key_cache
+            strat_llm = LLM(model=model_name, api_key=st.session_state.api_key_cache, base_url=custom_base_url, temperature=0.3)
+            
+            strat_agent = Agent(role='Chief Strategy Officer', goal='Generate actionable DROT based on intent.', backstory='Elite strategist.', llm=strat_llm)
+            strat_task = Task(description=f"Analyze this market JSON: {sd['raw_json']}. The client's intent is: **{strategic_intent}**. Generate a highly specific DROT tailored ONLY to this intent.", expected_output="MarketDynamics JSON", agent=strat_agent, output_pydantic=MarketDynamics)
+            
+            with st.spinner(f"Synthesizing {strategic_intent} Strategy..."):
+                strat_res = Crew(agents=[strat_agent], tasks=[strat_task], process=Process.sequential).kickoff()
+                st.session_state.drot_markdown = compile_drot_report(strat_res.pydantic, strategic_intent)
+                st.session_state.strategy_complete = True
+                st.rerun()
+
+# ==============================================================================
+# 7. FINAL DOSSIER, EXPORT & RAG CHATBOT 
+# ==============================================================================
+if st.session_state.sizing_data and st.session_state.strategy_complete:
+    sd = st.session_state.sizing_data
+    
+    # Combine Sizing, Strategy, and Citations
+    full_dossier = f"{sd['sizing_md']}\n{st.session_state.drot_markdown}\n{sd['citations_md']}"
+    
+    st.markdown("---")
+    st.markdown(full_dossier)
+    st.markdown("---")
+    
+    safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', sd["market"].lower())
+    b1, b2, b3 = st.columns(3)
+    with b1: st.download_button("Download (MD)", full_dossier, f"Dossier_{safe_name}.md", "text/markdown", use_container_width=True)
+    with b2: st.download_button("Download (PDF)", export_to_pdf(full_dossier), f"Dossier_{safe_name}.pdf", "application/pdf", use_container_width=True)
+    with b3: st.download_button("Download (CSV)", sd["df"].to_csv(index=False).encode('utf-8'), f"Data_{safe_name}.csv", "text/csv", use_container_width=True)
 
     st.markdown("---")
-    st.markdown(rd["markdown"])
-    
-    # ==============================================================================
-    # 🤖 7. INTERACTIVE CHATBOT LOGIC
-    # ==============================================================================
-    st.markdown("---")
-    st.subheader("💬 Ask the Market Intelligence Assistant")
-    st.caption("Ask specific follow-up questions regarding vendors, segment breakdowns, or M&A strategy based on this report.")
-
+    st.subheader("Ask the Strategy Assistant")
     for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        with st.chat_message(msg["role"]): st.markdown(msg["content"])
 
-    if user_query := st.chat_input("e.g., What are the main M&A targets in the largest pillar?"):
-        
+    if user_query := st.chat_input("Ask a follow-up about vendors, gaps, or strategy..."):
         st.session_state.chat_history.append({"role": "user", "content": user_query})
-        with st.chat_message("user"):
-            st.markdown(user_query)
+        with st.chat_message("user"): st.markdown(user_query)
 
         with st.chat_message("assistant"):
-            with st.spinner("Analyzing report data..."):
+            with st.spinner("Analyzing dossier..."):
                 try:
                     import litellm
                     os.environ[env_var_name] = st.session_state.api_key_cache
-                    
-                    system_prompt = f"""You are an elite investment analyst assistant.
-Here is the official market report you just generated:
----
-{rd["markdown"]}
----
-Answer the user's question accurately using ONLY the verified data from the report above."""
-
-                    response = litellm.completion(
-                        model=model_name,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_query}
-                        ],
-                        api_key=st.session_state.api_key_cache,
-                        base_url=custom_base_url
-                    )
-                    
+                    sys_prompt = f"You are a strategic assistant. Use ONLY this report to answer:\n---\n{full_dossier}"
+                    response = litellm.completion(model=model_name, messages=[{"role": "system", "content": sys_prompt}, {"role": "user", "content": user_query}], api_key=st.session_state.api_key_cache, base_url=custom_base_url)
                     bot_reply = response.choices[0].message.content
                     st.markdown(bot_reply)
                     st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
-                    st.rerun() 
-                    
-                except Exception as e:
-                    st.error(f"Chatbot Error: {str(e)}")
+                    st.rerun()
+                except Exception as e: st.error(f"Chatbot Error: {str(e)}")
