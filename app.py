@@ -198,7 +198,7 @@ if st.button("🚀 Phase 1: Extract Market Architecture (TAM)", type="primary"):
     if custom_base_url: llm_kwargs["base_url"] = custom_base_url
     engine_llm = LLM(**llm_kwargs)
     
-    quantifier = Agent(role='Market Architect', goal='Map MECE pillars and extract revenues.', backstory='Elite auditor.', tools=[free_search_tool], llm=engine_llm)
+    quantifier = Agent(role='Market Architect', goal='Map MECE pillars and extract revenues.', backstory='Elite auditor.', tools=[FreeSearchTool()], llm=engine_llm)
     sizing_task = Task(description=f"Map MECE TAM for '{target_market}'.", expected_output="MarketSizingData JSON", agent=quantifier, output_pydantic=MarketSizingData)
     
     with st.status("⚡ Extracting Market Architecture...", expanded=True) as status:
