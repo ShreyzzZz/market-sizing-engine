@@ -4,6 +4,7 @@ _crewai_cache.mark_cache_breakpoint = lambda msg: msg
 import os
 import re
 import io
+from datetime import date
 import streamlit as st
 import plotly.express as px
 import pandas as pd
@@ -52,6 +53,15 @@ with st.sidebar:
         crew_rpm_limit = 15 
 
     st.session_state.api_key_cache = api_key_input
+
+    # 📊 Token Usage Dashboard (rendered here so it's always visible;
+    # actual rendering function is defined in Section 4B below)
+    with st.expander("📊 Today's Token Usage (Gemini & Groq)", expanded=False):
+        st.caption("Resets automatically at midnight. Estimates assume future reports cost roughly the same as your last one.")
+        render_token_dashboard_placeholder = st.empty()
+
+# Label used everywhere below to key the token-usage dictionary
+provider_label = "Gemini" if provider.startswith("Google Gemini") else "Groq"
 
 # ==============================================================================
 # 2. PYDANTIC SCHEMAS (WITH DROT & STRATEGIC INSIGHTS)
@@ -224,6 +234,123 @@ def export_to_pdf(markdown_text: str) -> bytes:
     return out.getvalue()
 
 # ==============================================================================
+# 4B. TOKEN USAGE TRACKING (Gemini & Groq, resets daily)
+# ==============================================================================
+# ⚠️ These are approximate free-tier daily token budgets as of 2026 — verify
+# against your own account/rate-limits page and adjust. Gemini's free Flash
+# tier is published as ~1,500 requests/day + ~1,000,000 tokens/minute (no
+# single "tokens/day" figure exists), so 1,000,000 below is a conservative
+# proxy for "a safe daily token budget." Groq publishes tokens-per-day (TPD)
+# per model — e.g. Llama 3.3 70B sits around 100,000 TPD; adjust to match
+# whichever model you're actually pointing at.
+DAILY_TOKEN_LIMITS = {
+    "Gemini": 1_000_000,
+    "Groq": 100_000,
+}
+
+# Fallback estimate used only before any report has been generated yet today
+DEFAULT_TOKENS_PER_REPORT_ESTIMATE = 8_000
+
+
+def _init_token_state():
+    """Creates/resets today's token-tracking dict in session_state if the date has rolled over."""
+    today_str = date.today().isoformat()
+    if "token_usage" not in st.session_state:
+        st.session_state.token_usage = {}
+    for prov in ("Gemini", "Groq"):
+        entry = st.session_state.token_usage.get(prov)
+        if entry is None or entry.get("date") != today_str:
+            st.session_state.token_usage[prov] = {
+                "date": today_str,
+                "used_today": 0,
+                "last_report_tokens": 0,
+                "last_chat_tokens": 0,
+            }
+
+
+def record_token_usage(provider_key: str, tokens_used: int, category: str = "report"):
+    """Adds tokens_used to today's running total for the given provider.
+    category is 'report' (full sizing-engine run) or 'chat' (follow-up Q&A turn)."""
+    _init_token_state()
+    tokens_used = max(int(tokens_used or 0), 0)
+    entry = st.session_state.token_usage[provider_key]
+    entry["used_today"] += tokens_used
+    if category == "report":
+        entry["last_report_tokens"] = tokens_used
+    else:
+        entry["last_chat_tokens"] = tokens_used
+
+
+def get_token_summary(provider_key: str) -> dict:
+    """Returns the full picture for one provider: limit, used, remaining, last report cost, reports left."""
+    _init_token_state()
+    entry = st.session_state.token_usage[provider_key]
+    limit = DAILY_TOKEN_LIMITS.get(provider_key, 0)
+    used = entry["used_today"]
+    remaining = max(limit - used, 0)
+    per_report = entry["last_report_tokens"] or DEFAULT_TOKENS_PER_REPORT_ESTIMATE
+    reports_left = int(remaining // per_report) if per_report > 0 else 0
+    return {
+        "provider": provider_key,
+        "daily_limit": limit,
+        "used_today": used,
+        "remaining": remaining,
+        "last_report_tokens": entry["last_report_tokens"],
+        "last_chat_tokens": entry["last_chat_tokens"],
+        "est_reports_remaining": reports_left,
+    }
+
+
+def render_token_dashboard(container):
+    """Renders a small table with both providers' token status into the given Streamlit container."""
+    _init_token_state()
+    rows = []
+    for prov in ("Gemini", "Groq"):
+        s = get_token_summary(prov)
+        rows.append({
+            "Provider": s["provider"],
+            "Daily Limit": f"{s['daily_limit']:,}",
+            "Used Today": f"{s['used_today']:,}",
+            "Remaining": f"{s['remaining']:,}",
+            "Last Report Tokens": f"{s['last_report_tokens']:,}" if s["last_report_tokens"] else "—",
+            "Est. Reports Left": s["est_reports_remaining"],
+        })
+    df_tokens = pd.DataFrame(rows)
+    container.dataframe(df_tokens, use_container_width=True, hide_index=True)
+
+
+def extract_crew_tokens(crew_obj, fallback_text: str) -> int:
+    """Pulls total token usage out of a finished CrewAI Crew. Falls back to a
+    rough character-based estimate (~4 chars/token) if usage_metrics isn't
+    available in your installed CrewAI version."""
+    total_tokens = 0
+    try:
+        usage_obj = crew_obj.usage_metrics
+        if hasattr(usage_obj, "total_tokens"):
+            total_tokens = int(usage_obj.total_tokens)
+        elif isinstance(usage_obj, dict):
+            total_tokens = int(usage_obj.get("total_tokens", 0))
+    except Exception:
+        total_tokens = 0
+
+    if not total_tokens:
+        total_tokens = max(len(fallback_text) // 4, 500)
+    return total_tokens
+
+
+def extract_litellm_tokens(response_obj, fallback_text: str) -> int:
+    """Pulls total token usage out of a litellm completion response. Falls
+    back to a rough character-based estimate if .usage isn't present."""
+    try:
+        return int(response_obj.usage.total_tokens)
+    except Exception:
+        return max(len(fallback_text) // 4, 100)
+
+
+# Now that the tracking functions exist, render the sidebar dashboard
+render_token_dashboard(render_token_dashboard_placeholder)
+
+# ==============================================================================
 # 5. WORKFLOW RUNNER
 # ==============================================================================
 target_market = st.text_input("🎯 Enter Target Market:", placeholder="e.g., Global Electric Vehicle Battery Market")
@@ -277,6 +404,10 @@ if st.button("🚀 Run Enterprise Sizing Engine", type="primary"):
             df = pd.DataFrame(chart_data)
             
             final_markdown_report = compile_reconciled_report(structured_data, target_market, scalar, target_tam, unit_correction)
+
+            # 🔢 Capture & record token usage for this report run
+            report_tokens = extract_crew_tokens(crew, final_markdown_report)
+            record_token_usage(provider_label, report_tokens, category="report")
             
             # 💾 Save everything to session state so it survives the chatbot re-renders
             st.session_state.report_data = {
@@ -285,6 +416,9 @@ if st.button("🚀 Run Enterprise Sizing Engine", type="primary"):
                 "markdown": final_markdown_report
             }
             status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
+
+            # Force a fresh rerun so the sidebar token dashboard reflects this run's usage immediately
+            st.rerun()
             
         except Exception as e:
             status.update(label="⚠️ Execution Notice", state="error", expanded=True)
@@ -392,6 +526,11 @@ Answer the user's question accurately using ONLY the verified data from the repo
                     )
                     
                     bot_reply = response.choices[0].message.content
+
+                    # 🔢 Capture & record token usage for this chat turn
+                    chat_tokens = extract_litellm_tokens(response, system_prompt + user_query + bot_reply)
+                    record_token_usage(provider_label, chat_tokens, category="chat")
+
                     st.markdown(bot_reply)
                     st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
                     st.rerun() 
