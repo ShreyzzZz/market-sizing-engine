@@ -8,3 +8,5 @@ pydantic-settings
 google-generativeai
 markdown-pdf
 litellm
+scikit-learn
+rapidfuzz
