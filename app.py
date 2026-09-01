@@ -9,11 +9,16 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 from pydantic import BaseModel, Field
-from typing import List
+from typing import List, Dict, Any
 from crewai import Agent, Task, Crew, Process, LLM
 from crewai.tools import tool
 from duckduckgo_search import DDGS
 from markdown_pdf import MarkdownPdf, Section
+
+# Algorithmic MECE Audit Dependencies
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from rapidfuzz import fuzz
 
 # ==============================================================================
 # 1. UI SETUP & STATE MANAGEMENT
@@ -54,8 +59,7 @@ with st.sidebar:
 
     st.session_state.api_key_cache = api_key_input
 
-    # 📊 Token Usage Dashboard (rendered here so it's always visible;
-    # actual rendering function is defined in Section 4B below)
+    # 📊 Token Usage Dashboard Placeholder
     with st.expander("📊 Today's Token Usage (Gemini & Groq)", expanded=False):
         st.caption("Resets automatically at midnight. Estimates assume future reports cost roughly the same as your last one.")
         render_token_dashboard_placeholder = st.empty()
@@ -107,7 +111,102 @@ class MarketSizingData(BaseModel):
     market_dynamics: MarketDynamics = Field(..., description="Strategic intelligence and DROT analysis deduced from the institutional data.")
 
 # ==============================================================================
-# 3. HIGH-AUTHORITY SEARCH TOOL WITH TEMPORAL WATERFALL
+# 3. ALGORITHMIC MECE AUDIT ENGINE
+# ==============================================================================
+def run_algorithmic_mece_audit(
+    data: MarketSizingData, 
+    semantic_threshold: float = 0.60, 
+    vendor_overlap_threshold: float = 0.30,
+    fuzzy_name_threshold: float = 80.0
+) -> Dict[str, Any]:
+    """
+    Algorithmic MECE Validator:
+    1. Pillar Definition Semantic Overlap (TF-IDF Cosine Similarity)
+    2. Vendor Cross-Pillar Overlap Detection (Pairwise Jaccard Similarity on Sets)
+    3. Sub-Segment Near-Duplicate Detection (Fuzzy String Matching)
+    """
+    audit_findings = {
+        "is_valid_mece": True,
+        "score": 100.0,
+        "warnings": [],
+        "critical_violations": []
+    }
+    
+    # ----------------------------------------------------
+    # 1. PILLAR DEFINITION SEMANTIC SIMILARITY (Cosine)
+    # ----------------------------------------------------
+    pillars = data.segments
+    if len(pillars) > 1:
+        definitions = [p.definition for p in pillars]
+        pillar_names = [p.segment_name for p in pillars]
+        
+        vectorizer = TfidfVectorizer(stop_words='english')
+        tfidf_matrix = vectorizer.fit_transform(definitions)
+        sim_matrix = cosine_similarity(tfidf_matrix, tfidf_matrix)
+        
+        for i in range(len(pillars)):
+            for j in range(i + 1, len(pillars)):
+                sim_score = float(sim_matrix[i][j])
+                if sim_score > semantic_threshold:
+                    audit_findings["is_valid_mece"] = False
+                    msg = f"High Semantic Overlap ({sim_score:.2f}) between Pillar definitions: '{pillar_names[i]}' and '{pillar_names[j]}'"
+                    audit_findings["critical_violations"].append(msg)
+                    audit_findings["score"] -= 25.0
+
+    # Collect sub-segments globally for Vendor & Name checks
+    all_subsegments = []
+    for p in data.segments:
+        for sub in p.sub_segments:
+            all_subsegments.append({
+                "pillar": p.segment_name,
+                "name": sub.sub_segment_name,
+                "vendors": set([v.lower().strip() for v in sub.top_vendors])
+            })
+
+    # ----------------------------------------------------
+    # 2. VENDOR CROSS-PILLAR OVERLAP (Jaccard Index)
+    # ----------------------------------------------------
+    for i in range(len(all_subsegments)):
+        for j in range(i + 1, len(all_subsegments)):
+            sub_a = all_subsegments[i]
+            sub_b = all_subsegments[j]
+            
+            if sub_a["pillar"] != sub_b["pillar"]:
+                set_a = sub_a["vendors"]
+                set_b = sub_b["vendors"]
+                
+                if set_a and set_b:
+                    intersection = set_a.intersection(set_b)
+                    union = set_a.union(set_b)
+                    jaccard_score = len(intersection) / len(union)
+                    
+                    if jaccard_score > vendor_overlap_threshold:
+                        audit_findings["is_valid_mece"] = False
+                        msg = (f"Vendor Leakage (Jaccard: {jaccard_score:.2f}) between cross-pillar sub-segments: "
+                               f"'{sub_a['name']}' [{sub_a['pillar']}] and '{sub_b['name']}' [{sub_b['pillar']}]. "
+                               f"Shared Vendors: {list(intersection)}")
+                        audit_findings["critical_violations"].append(msg)
+                        audit_findings["score"] -= 15.0
+
+    # ----------------------------------------------------
+    # 3. SUB-SEGMENT NEAR-DUPLICATE DETECTION (Fuzzy Match)
+    # ----------------------------------------------------
+    for i in range(len(all_subsegments)):
+        for j in range(i + 1, len(all_subsegments)):
+            name_a = all_subsegments[i]["name"]
+            name_b = all_subsegments[j]["name"]
+            
+            ratio = fuzz.token_sort_ratio(name_a, name_b)
+            if ratio >= fuzzy_name_threshold:
+                msg = f"Potential Duplicate Sub-Segment Name ({ratio:.1f}% Match): '{name_a}' vs '{name_b}'"
+                audit_findings["warnings"].append(msg)
+                audit_findings["score"] -= 5.0
+                
+    audit_findings["score"] = max(0.0, audit_findings["score"])
+    return audit_findings
+
+# ==============================================================================
+# 4. HIGH-AUTHORITY SEARCH TOOL WITH TEMPORAL WATERFALL
 # ==============================================================================
 @tool("Web Search")
 def free_search_tool(query: str) -> str:
@@ -142,7 +241,7 @@ def free_search_tool(query: str) -> str:
         return f"Error conducting web search: {str(e)}"
 
 # ==============================================================================
-# 4. EXPORT ENGINE (PDF & TRANSCRIPT BUILDER)
+# 5. EXPORT ENGINE (PDF & TRANSCRIPT BUILDER)
 # ==============================================================================
 PROHIBITED_FUTURE_PATTERNS = [r"expected to reach", r"projected to grow", r"projected to reach", r"forecasted to", r"is expected to", r"estimated to reach", r"by 2027", r"by 2028", r"by 2029", r"by 2030"]
 
@@ -234,23 +333,14 @@ def export_to_pdf(markdown_text: str) -> bytes:
     return out.getvalue()
 
 # ==============================================================================
-# 4B. TOKEN USAGE TRACKING (Gemini & Groq, resets daily)
+# 6. TOKEN USAGE TRACKING
 # ==============================================================================
-# ⚠️ These are approximate free-tier daily token budgets as of 2026 — verify
-# against your own account/rate-limits page and adjust. Gemini's free Flash
-# tier is published as ~1,500 requests/day + ~1,000,000 tokens/minute (no
-# single "tokens/day" figure exists), so 1,000,000 below is a conservative
-# proxy for "a safe daily token budget." Groq publishes tokens-per-day (TPD)
-# per model — e.g. Llama 3.3 70B sits around 100,000 TPD; adjust to match
-# whichever model you're actually pointing at.
 DAILY_TOKEN_LIMITS = {
     "Gemini": 1_000_000,
     "Groq": 100_000,
 }
 
-# Fallback estimate used only before any report has been generated yet today
 DEFAULT_TOKENS_PER_REPORT_ESTIMATE = 8_000
-
 
 def _init_token_state():
     """Creates/resets today's token-tracking dict in session_state if the date has rolled over."""
@@ -267,10 +357,7 @@ def _init_token_state():
                 "last_chat_tokens": 0,
             }
 
-
 def record_token_usage(provider_key: str, tokens_used: int, category: str = "report"):
-    """Adds tokens_used to today's running total for the given provider.
-    category is 'report' (full sizing-engine run) or 'chat' (follow-up Q&A turn)."""
     _init_token_state()
     tokens_used = max(int(tokens_used or 0), 0)
     entry = st.session_state.token_usage[provider_key]
@@ -280,9 +367,7 @@ def record_token_usage(provider_key: str, tokens_used: int, category: str = "rep
     else:
         entry["last_chat_tokens"] = tokens_used
 
-
 def get_token_summary(provider_key: str) -> dict:
-    """Returns the full picture for one provider: limit, used, remaining, last report cost, reports left."""
     _init_token_state()
     entry = st.session_state.token_usage[provider_key]
     limit = DAILY_TOKEN_LIMITS.get(provider_key, 0)
@@ -300,9 +385,7 @@ def get_token_summary(provider_key: str) -> dict:
         "est_reports_remaining": reports_left,
     }
 
-
 def render_token_dashboard(container):
-    """Renders a small table with both providers' token status into the given Streamlit container."""
     _init_token_state()
     rows = []
     for prov in ("Gemini", "Groq"):
@@ -318,11 +401,7 @@ def render_token_dashboard(container):
     df_tokens = pd.DataFrame(rows)
     container.dataframe(df_tokens, use_container_width=True, hide_index=True)
 
-
 def extract_crew_tokens(crew_obj, fallback_text: str) -> int:
-    """Pulls total token usage out of a finished CrewAI Crew. Falls back to a
-    rough character-based estimate (~4 chars/token) if usage_metrics isn't
-    available in your installed CrewAI version."""
     total_tokens = 0
     try:
         usage_obj = crew_obj.usage_metrics
@@ -337,21 +416,17 @@ def extract_crew_tokens(crew_obj, fallback_text: str) -> int:
         total_tokens = max(len(fallback_text) // 4, 500)
     return total_tokens
 
-
 def extract_litellm_tokens(response_obj, fallback_text: str) -> int:
-    """Pulls total token usage out of a litellm completion response. Falls
-    back to a rough character-based estimate if .usage isn't present."""
     try:
         return int(response_obj.usage.total_tokens)
     except Exception:
         return max(len(fallback_text) // 4, 100)
 
-
-# Now that the tracking functions exist, render the sidebar dashboard
+# Render the sidebar dashboard
 render_token_dashboard(render_token_dashboard_placeholder)
 
 # ==============================================================================
-# 5. WORKFLOW RUNNER
+# 7. WORKFLOW RUNNER
 # ==============================================================================
 target_market = st.text_input("🎯 Enter Target Market:", placeholder="e.g., Global Electric Vehicle Battery Market")
 
@@ -388,6 +463,9 @@ if st.button("🚀 Run Enterprise Sizing Engine", type="primary"):
             result = crew.kickoff()
             structured_data: MarketSizingData = result.pydantic
             
+            # --- EXECUTE ALGORITHMIC MECE AUDIT ---
+            audit_report = run_algorithmic_mece_audit(structured_data)
+            
             target_tam = structured_data.top_down_industry_tam_billions
             raw_sum = sum(sub.estimated_subsegment_market_size_billions for seg in structured_data.segments for sub in seg.sub_segments)
             
@@ -405,19 +483,19 @@ if st.button("🚀 Run Enterprise Sizing Engine", type="primary"):
             
             final_markdown_report = compile_reconciled_report(structured_data, target_market, scalar, target_tam, unit_correction)
 
-            # 🔢 Capture & record token usage for this report run
+            # Capture & record token usage
             report_tokens = extract_crew_tokens(crew, final_markdown_report)
             record_token_usage(provider_label, report_tokens, category="report")
             
-            # 💾 Save everything to session state so it survives the chatbot re-renders
+            # Save everything to session state including the MECE audit
             st.session_state.report_data = {
                 "target_market": target_market,
                 "df": df,
-                "markdown": final_markdown_report
+                "markdown": final_markdown_report,
+                "audit": audit_report
             }
             status.update(label="✅ Analysis Complete!", state="complete", expanded=False)
 
-            # Force a fresh rerun so the sidebar token dashboard reflects this run's usage immediately
             st.rerun()
             
         except Exception as e:
@@ -425,10 +503,28 @@ if st.button("🚀 Run Enterprise Sizing Engine", type="primary"):
             st.error(f"An error occurred:\n\n`{str(e)}`")
 
 # ==============================================================================
-# 6. RENDER DASHBOARD & CHATBOT (FROM SESSION STATE)
+# 8. RENDER DASHBOARD & CHATBOT (FROM SESSION STATE)
 # ==============================================================================
 if st.session_state.report_data:
     rd = st.session_state.report_data
+    audit = rd.get("audit")
+
+    # --- DISPLAY ALGORITHMIC MECE AUDIT RESULTS ---
+    if audit:
+        if audit["is_valid_mece"]:
+            st.success(f"🛡️ **Algorithmic MECE Audit Passed** — Institutional Structural Integrity Score: {audit['score']:.0f}/100")
+        else:
+            st.error(f"⚠️ **Algorithmic MECE Audit Failed** — Institutional Structural Integrity Score: {audit['score']:.0f}/100")
+            
+        with st.expander("🔍 Detailed Algorithmic Boundary Findings", expanded=not audit["is_valid_mece"]):
+            if audit["critical_violations"]:
+                st.markdown("#### 🚨 Critical Violations (Semantic Overlap / Cross-Pillar Vendor Leakage):")
+                for viol in audit["critical_violations"]:
+                    st.write(f"- {viol}")
+            if audit["warnings"]:
+                st.markdown("#### ⚠️ Warnings & Near-Duplicates:")
+                for warn in audit["warnings"]:
+                    st.write(f"- {warn}")
     
     st.markdown("[**⬇️ Jump directly to the Visual Dashboard**](#market-distribution)")
     
@@ -486,7 +582,7 @@ if st.session_state.report_data:
     st.markdown(rd["markdown"])
     
     # ==============================================================================
-    # 🤖 7. INTERACTIVE CHATBOT LOGIC
+    # 🤖 9. INTERACTIVE CHATBOT LOGIC
     # ==============================================================================
     st.markdown("---")
     st.subheader("💬 Ask the Market Intelligence Assistant")
@@ -527,7 +623,7 @@ Answer the user's question accurately using ONLY the verified data from the repo
                     
                     bot_reply = response.choices[0].message.content
 
-                    # 🔢 Capture & record token usage for this chat turn
+                    # Capture & record token usage for chat turn
                     chat_tokens = extract_litellm_tokens(response, system_prompt + user_query + bot_reply)
                     record_token_usage(provider_label, chat_tokens, category="chat")
 
