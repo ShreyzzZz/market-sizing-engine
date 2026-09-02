@@ -147,8 +147,8 @@ with st.sidebar:
         crew_rpm_limit = 4 
     else:
         api_key_input = st.text_input("OpenRouter API Key", type="password")
-        # Using Llama 3.3 70B Instruct - a highly stable, completely free model on OpenRouter
-        model_name = "openai/meta-llama/llama-3.3-70b-instruct:free"
+        # Universal Dynamic Free Model Router (Guaranteed 0-cost execution without 404s)
+        model_name = "openai/openrouter/free"
         env_var_name = "OPENROUTER_API_KEY"
         custom_base_url = "https://openrouter.ai/api/v1"
         crew_rpm_limit = 10 
