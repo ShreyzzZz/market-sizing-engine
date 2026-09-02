@@ -144,7 +144,7 @@ with st.sidebar:
         crew_rpm_limit = 4 
     else:
         api_key_input = st.text_input("Groq API Key", type="password")
-        model_name = "openai/gpt-oss-120b"
+        model_name = "llama-3.3-70b-versatile"
         env_var_name = "GROQ_API_KEY"
         custom_base_url = "https://api.groq.com/openai/v1"
         crew_rpm_limit = 15 
