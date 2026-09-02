@@ -134,26 +134,30 @@ def extract_litellm_tokens(response_obj, fallback_text: str) -> int:
 # Sidebar Configuration
 with st.sidebar:
     st.header("🔑 Zero-Cost Configuration")
-    provider = st.radio("Select Free API Provider:", ["Google Gemini (Free Tier)", "Groq Cloud (100% Free Backup)"])
+    provider = st.radio(
+        "Select Free API Provider:", 
+        ["Google Gemini (Free Tier)", "OpenRouter (100% Free Backup)"]
+    )
     
     if provider == "Google Gemini (Free Tier)":
         api_key_input = st.text_input("Gemini API Key", type="password")
-        model_name = "gemini/gemini-3.6-flash"  
+        model_name = "gemini/gemini-2.5-flash"
         env_var_name = "GEMINI_API_KEY"
         custom_base_url = None
         crew_rpm_limit = 4 
     else:
-        api_key_input = st.text_input("Groq API Key", type="password")
-        model_name = "qwen/qwen3-32b"
-        env_var_name = "GROQ_API_KEY"
-        custom_base_url = "https://api.groq.com/openai/v1"
-        crew_rpm_limit = 15 
+        api_key_input = st.text_input("OpenRouter API Key", type="password")
+        # Using Llama 3.3 70B Instruct - a highly stable, completely free model on OpenRouter
+        model_name = "openai/meta-llama/llama-3.3-70b-instruct:free"
+        env_var_name = "OPENROUTER_API_KEY"
+        custom_base_url = "https://openrouter.ai/api/v1"
+        crew_rpm_limit = 10 
 
     st.session_state.api_key_cache = api_key_input
 
-    # 📊 Token Usage Dashboard Placeholder & Interactive Refresh Control
-    with st.expander("📊 Today's Token Usage (Gemini & Groq)", expanded=True):
-        st.caption("Resets automatically at midnight. Tracks live API responses.")
+    # 📊 Token Usage Dashboard Placeholder
+    with st.expander("📊 Today's Token Usage", expanded=True):
+        st.caption("Resets automatically at midnight.")
         dashboard_placeholder = st.empty()
         
         col_ref, col_rst = st.columns(2)
