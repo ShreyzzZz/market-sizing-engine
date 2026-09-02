@@ -45,7 +45,7 @@ st.markdown("This engine maps the organic architecture of the market using **Tem
 # ==============================================================================
 DAILY_TOKEN_LIMITS = {
     "Gemini": 1_000_000,
-    "Groq": 100_000,
+    "OpenRouter": 200_000, # Representative limit based on 50 free requests/day
 }
 
 DEFAULT_TOKENS_PER_REPORT_ESTIMATE = 8_000
@@ -55,7 +55,7 @@ def _init_token_state():
     today_str = date.today().isoformat()
     if "token_usage" not in st.session_state:
         st.session_state.token_usage = {}
-    for prov in ("Gemini", "Groq"):
+    for prov in ("Gemini", "OpenRouter"):
         entry = st.session_state.token_usage.get(prov)
         if entry is None or entry.get("date") != today_str:
             st.session_state.token_usage[prov] = {
@@ -97,7 +97,7 @@ def render_token_dashboard(container):
     """Renders the usage dashboard inside a specific Streamlit container placeholder."""
     _init_token_state()
     rows = []
-    for prov in ("Gemini", "Groq"):
+    for prov in ("Gemini", "OpenRouter"):
         s = get_token_summary(prov)
         rows.append({
             "Provider": s["provider"],
@@ -156,8 +156,8 @@ with st.sidebar:
     st.session_state.api_key_cache = api_key_input
 
     # 📊 Token Usage Dashboard Placeholder
-    with st.expander("📊 Today's Token Usage", expanded=True):
-        st.caption("Resets automatically at midnight.")
+    with st.expander("📊 Today's Token Usage (Gemini & OpenRouter)", expanded=True):
+        st.caption("Resets automatically at midnight. Tracks live API responses.")
         dashboard_placeholder = st.empty()
         
         col_ref, col_rst = st.columns(2)
@@ -177,7 +177,7 @@ def update_dashboard_ui():
 update_dashboard_ui()
 
 # Label used for session lookup
-provider_label = "Gemini" if provider.startswith("Google Gemini") else "Groq"
+provider_label = "Gemini" if provider.startswith("Google Gemini") else "OpenRouter"
 
 # ==============================================================================
 # 2. PYDANTIC SCHEMAS (WITH DROT & STRATEGIC INSIGHTS)
