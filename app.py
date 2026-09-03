@@ -8,6 +8,7 @@ from datetime import date
 import streamlit as st
 import plotly.express as px
 import pandas as pd
+import litellm
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 from crewai import Agent, Task, Crew, Process, LLM
@@ -37,7 +38,7 @@ if "report_data" not in st.session_state:
 if "api_key_cache" not in st.session_state:
     st.session_state.api_key_cache = ""
 
-st.title("📈 Institutional Market Sizing Engine")
+st.title("Institutional Market Sizing Engine")
 st.markdown("This engine maps the organic architecture of the market using **Temporal Waterfall Logic (Prioritizing 2026/2025 Actuals)**. Citations are screened in Python to ensure data originates ONLY from **Big 3 / Big 4 consulting firms, top analyst research houses, SEC filings, and official investor relations**.")
 
 # ==============================================================================
@@ -133,30 +134,31 @@ def extract_litellm_tokens(response_obj, fallback_text: str) -> int:
 
 # Sidebar Configuration
 with st.sidebar:
-    st.header("🔑 Zero-Cost Configuration")
-    provider = st.radio(
-        "Select Free API Provider:", 
-        ["Google Gemini (Free Tier)", "OpenRouter (100% Free Backup)"]
-    )
+    st.header("🔑 Zero-Downtime Configuration")
+    st.caption("Gemini is the primary engine. If Google servers hit a 503 spike, requests automatically failover to OpenRouter.")
     
-    if provider == "Google Gemini (Free Tier)":
-        api_key_input = st.text_input("Gemini API Key", type="password")
-        model_name = "gemini/gemini-3.6-flash"
-        env_var_name = "GEMINI_API_KEY"
-        custom_base_url = None
-        crew_rpm_limit = 4 
-    else:
-        api_key_input = st.text_input("OpenRouter API Key", type="password")
-        # Universal Dynamic Free Model Router (Guaranteed 0-cost execution without 404s)
-        model_name = "openai/openrouter/free"
-        env_var_name = "OPENROUTER_API_KEY"
-        custom_base_url = "https://openrouter.ai/api/v1"
-        crew_rpm_limit = 10 
-
-    st.session_state.api_key_cache = api_key_input
+    gemini_key = st.text_input("Gemini API Key (Primary)", type="password")
+    or_key = st.text_input("OpenRouter API Key (Fallback)", type="password")
+    
+    model_name = "gemini/gemini-3.6-flash"  
+    
+    if gemini_key:
+        os.environ["GEMINI_API_KEY"] = gemini_key
+        st.session_state.api_key_cache = gemini_key
+    if or_key:
+        os.environ["OPENROUTER_API_KEY"] = or_key
+        # Configure LiteLLM global fallback rule across all calls
+        litellm.fallbacks = [{"gemini/gemini-3.6-flash": ["openai/openrouter/free"]}]
 
     # 📊 Token Usage Dashboard Placeholder
-    with st.expander("📊 Today's Token Usage (Gemini & OpenRouter)", expanded=True):
+    with st.expander("📊 Today's Token Usage (Gemini & OpenRouter)", expanded=False):
+        st.caption("Resets automatically at midnight. Estimates assume future reports cost roughly the same as your last one.")
+        render_token_dashboard_placeholder = st.empty()
+
+provider_label = "Gemini"
+
+    # 📊 Token Usage Dashboard Placeholder
+    with st.expander(" Today's Token Consumption ", expanded=True):
         st.caption("Resets automatically at midnight. Tracks live API responses.")
         dashboard_placeholder = st.empty()
         
@@ -525,14 +527,14 @@ if st.session_state.report_data:
     
     chart_col1, chart_col2 = st.columns(2)
     with chart_col1:
-        st.markdown("### 🍩 Market Distribution")
+        st.markdown(" Market Distribution ")
         fig_sunburst = px.sunburst(rd["df"], path=['Main Pillar', 'Sub-Segment'], values='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
         fig_sunburst.update_traces(textinfo="label+percent parent+value")
         fig_sunburst.update_layout(margin=dict(t=10, l=10, r=10, b=10))
         st.plotly_chart(fig_sunburst, use_container_width=True)
         
     with chart_col2:
-        st.markdown("### 📊 Pillar Valuation")
+        st.markdown(" Pillar Valuation ")
         fig_bar = px.bar(rd["df"].groupby('Main Pillar', as_index=False)['Revenue ($B)'].sum().sort_values('Revenue ($B)', ascending=False), x='Main Pillar', y='Revenue ($B)', text='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
         fig_bar.update_traces(texttemplate='$%{text:.2f}B', textposition='outside')
         max_val = rd["df"].groupby('Main Pillar')['Revenue ($B)'].sum().max()
