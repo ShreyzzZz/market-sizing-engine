@@ -121,7 +121,7 @@ if "report_data" not in st.session_state:
 if "api_key_cache" not in st.session_state:
     st.session_state.api_key_cache = ""
 
-st.markdown('<h1 class="title-gradient">📈 Institutional Market Sizing Engine</h1>', unsafe_allow_html=True)
+st.markdown('<h1 class="title-gradient"> Institutional Market Sizing Engine</h1>', unsafe_allow_html=True)
 st.markdown("<p style='color: #a1a6b4; font-size: 1.1rem; margin-bottom: 24px;'>This engine maps the organic architecture of the market using <b>Temporal Waterfall Logic (Prioritizing 2026/2025 Actuals)</b>. Citations are screened in Python to ensure data originates ONLY from <b>Big 3 / Big 4 consulting firms, top analyst research houses, SEC filings, and official investor relations</b>.</p>", unsafe_allow_html=True)
 
 # ==============================================================================
