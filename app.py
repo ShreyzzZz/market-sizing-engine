@@ -26,24 +26,41 @@ from rapidfuzz import fuzz
 st.set_page_config(
     page_title="Institutional Market Sizing Engine",
     page_icon="📈",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Custom CSS for Sleek Dark Theme UI Overlay
+# Custom CSS for Sleek Dark Theme UI Overlay & Modern Upgrades
 st.markdown("""
 <style>
+    /* Global Background and Fonts */
+    .stApp {
+        background-color: #0e1117;
+    }
+    
+    /* Gradient Title */
+    .title-gradient {
+        background: -webkit-linear-gradient(45deg, #4A90E2, #50E3C2);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800;
+        font-size: 2.8rem;
+        margin-bottom: 0px;
+    }
+
     /* Dark card container for input panel */
     div[data-testid="stForm"], div.input-card {
-        background-color: #13151f;
+        background: linear-gradient(145deg, #161925, #1a1e2d);
         border: 1px solid #272a3b;
         border-radius: 12px;
-        padding: 20px 24px 10px 24px;
-        margin-bottom: 20px;
+        padding: 24px;
+        margin-bottom: 24px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
     }
     
     /* Input fields styling */
     div[data-baseweb="input"] {
-        background-color: #212433 !important;
+        background-color: #0e1117 !important;
         border-radius: 8px !important;
         border: 1px solid #33374c !important;
     }
@@ -54,27 +71,44 @@ st.markdown("""
 
     /* Input Labels */
     .stTextInput label, .stNumberInput label {
-        color: #e0e2ed !important;
-        font-weight: 500 !important;
+        color: #a1a6b4 !important;
+        font-weight: 600 !important;
         font-size: 14px !important;
-        margin-bottom: 4px !important;
+        margin-bottom: 6px !important;
     }
     
-    /* Dark Styled Button */
-    div.stButton > button {
-        background-color: #1c1f2e !important;
-        color: #f0f2f6 !important;
-        border: 1px solid #3d425c !important;
+    /* Dark Styled Primary Button */
+    div.stButton > button[kind="primary"] {
+        background: linear-gradient(90deg, #4A90E2, #357ABD) !important;
+        color: #ffffff !important;
+        border: none !important;
         border-radius: 8px !important;
-        padding: 6px 16px !important;
-        font-weight: 500 !important;
-        transition: all 0.2s ease-in-out;
+        padding: 10px 24px !important;
+        font-weight: 600 !important;
+        box-shadow: 0 4px 12px rgba(74, 144, 226, 0.3);
+        transition: all 0.3s ease-in-out;
     }
 
-    div.stButton > button:hover {
-        background-color: #292d42 !important;
-        border-color: #5a6185 !important;
-        color: #ffffff !important;
+    div.stButton > button[kind="primary"]:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(74, 144, 226, 0.5);
+    }
+
+    /* Tab Styling */
+    button[data-baseweb="tab"] {
+        background-color: transparent !important;
+        color: #a1a6b4 !important;
+        font-weight: 600 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #50E3C2 !important;
+        border-bottom: 2px solid #50E3C2 !important;
+    }
+    
+    /* Streamlit Metrics */
+    div[data-testid="stMetricValue"] {
+        font-size: 1.5rem !important;
+        color: #50E3C2 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -87,8 +121,8 @@ if "report_data" not in st.session_state:
 if "api_key_cache" not in st.session_state:
     st.session_state.api_key_cache = ""
 
-st.title("📈 Institutional Market Sizing Engine")
-st.markdown("This engine maps the organic architecture of the market using **Temporal Waterfall Logic (Prioritizing 2026/2025 Actuals)**. Citations are screened in Python to ensure data originates ONLY from **Big 3 / Big 4 consulting firms, top analyst research houses, SEC filings, and official investor relations**.")
+st.markdown('<h1 class="title-gradient">📈 Institutional Market Sizing Engine</h1>', unsafe_allow_html=True)
+st.markdown("<p style='color: #a1a6b4; font-size: 1.1rem; margin-bottom: 24px;'>This engine maps the organic architecture of the market using <b>Temporal Waterfall Logic (Prioritizing 2026/2025 Actuals)</b>. Citations are screened in Python to ensure data originates ONLY from <b>Big 3 / Big 4 consulting firms, top analyst research houses, SEC filings, and official investor relations</b>.</p>", unsafe_allow_html=True)
 
 # ==============================================================================
 # TOKEN USAGE TRACKING & HELPER FUNCTIONS
@@ -144,21 +178,18 @@ def get_token_summary(provider_key: str) -> dict:
     }
 
 def render_token_dashboard(container):
-    """Renders the usage dashboard inside a specific Streamlit container placeholder."""
+    """Renders the usage dashboard inside a specific Streamlit container placeholder using metrics."""
     _init_token_state()
-    rows = []
-    for prov in ("Gemini", "OpenRouter"):
-        s = get_token_summary(prov)
-        rows.append({
-            "Provider": s["provider"],
-            "Daily Limit": f"{s['daily_limit']:,}",
-            "Used Today": f"{s['used_today']:,}",
-            "Remaining": f"{s['remaining']:,}",
-            "Last Report Tokens": f"{s['last_report_tokens']:,}" if s["last_report_tokens"] else "—",
-            "Est. Reports Left": s["est_reports_remaining"],
-        })
-    df_tokens = pd.DataFrame(rows)
-    container.dataframe(df_tokens, use_container_width=True, hide_index=True)
+    with container.container():
+        for prov in ("Gemini", "OpenRouter"):
+            s = get_token_summary(prov)
+            st.markdown(f"**{s['provider']} Tracker**")
+            c1, c2 = st.columns(2)
+            c1.metric("Tokens Used", f"{s['used_today']:,}")
+            c2.metric("Remaining", f"{s['remaining']:,}")
+            st.progress(min(s['used_today'] / s['daily_limit'], 1.0))
+            st.caption(f"Est. {s['est_reports_remaining']} reports remaining today.")
+            st.divider()
 
 def extract_crew_tokens(crew_obj, fallback_text: str) -> int:
     total_tokens = 0
@@ -183,20 +214,20 @@ def extract_litellm_tokens(response_obj, fallback_text: str) -> int:
 
 # Sidebar Configuration
 with st.sidebar:
-    st.header("🔑 Zero-Cost Configuration")
+    st.header("⚙️ Configuration")
     provider = st.radio(
-        "Select Free API Provider:", 
-        ["Google Gemini (Free Tier)", "OpenRouter (100% Free Backup)"]
+        "Select API Provider:", 
+        ["Google Gemini (Free Tier)", "OpenRouter (Backup)"]
     )
     
     if provider == "Google Gemini (Free Tier)":
-        api_key_input = st.text_input("Gemini API Key", type="password")
+        api_key_input = st.text_input("Gemini API Key", type="password", help="Enter your Gemini API key")
         model_name = "gemini/gemini-3.6-flash"
         env_var_name = "GEMINI_API_KEY"
         custom_base_url = None
         crew_rpm_limit = 4 
     else:
-        api_key_input = st.text_input("OpenRouter API Key", type="password")
+        api_key_input = st.text_input("OpenRouter API Key", type="password", help="Enter your OpenRouter API key")
         model_name = "openai/openrouter/free"
         env_var_name = "OPENROUTER_API_KEY"
         custom_base_url = "https://openrouter.ai/api/v1"
@@ -205,19 +236,18 @@ with st.sidebar:
     st.session_state.api_key_cache = api_key_input
 
     # 📊 Token Usage Dashboard Placeholder
-    with st.expander(" Today's Token Consumption ", expanded=True):
-        st.caption("Resets automatically at midnight. Tracks live API responses.")
-        dashboard_placeholder = st.empty()
-        
-        col_ref, col_rst = st.columns(2)
-        with col_ref:
-            if st.button("🔄 Refresh", use_container_width=True):
-                st.rerun()
-        with col_rst:
-            if st.button("🗑️ Reset", use_container_width=True):
-                st.session_state.token_usage = {}
-                _init_token_state()
-                st.rerun()
+    st.markdown("### 📊 Live Token Analytics")
+    dashboard_placeholder = st.empty()
+    
+    col_ref, col_rst = st.columns(2)
+    with col_ref:
+        if st.button("🔄 Refresh", use_container_width=True):
+            st.rerun()
+    with col_rst:
+        if st.button("🗑️ Reset", use_container_width=True):
+            st.session_state.token_usage = {}
+            _init_token_state()
+            st.rerun()
 
 # Dynamic function call to update sidebar display immediately
 def update_dashboard_ui():
@@ -474,25 +504,24 @@ def export_to_pdf(markdown_text: str) -> bytes:
 # ==============================================================================
 # 6. WORKFLOW RUNNER (UPDATED CARD UI)
 # ==============================================================================
-with st.container():
-    st.markdown('<div class="input-card">', unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([1.8, 1.8, 1.0])
-    
-    with col1:
-        target_industry = st.text_input("Target Industry", value="Enterprise Cloud Security")
-    with col2:
-        region = st.text_input("Region", value="Global")
-    with col3:
-        base_year = st.number_input("Base Year", value=2026, step=1)
-        
-    btn_submitted = st.button("Generate Sizing Report")
-    st.markdown('</div>', unsafe_allow_html=True)
+st.markdown('<div class="input-card">', unsafe_allow_html=True)
+col1, col2, col3, col4 = st.columns([2, 1.5, 1, 1.5], vertical_alignment="bottom")
+
+with col1:
+    target_industry = st.text_input("🎯 Target Industry", value="Enterprise Cloud Security")
+with col2:
+    region = st.text_input("🌍 Region", value="Global")
+with col3:
+    base_year = st.number_input("📅 Base Year", value=2026, step=1)
+with col4:
+    btn_submitted = st.button("🚀 Generate Report", type="primary", use_container_width=True)
+st.markdown('</div>', unsafe_allow_html=True)
 
 target_market = f"{region} {target_industry} ({base_year})"
 
 if btn_submitted:
     if not api_key_input or not target_industry.strip():
-        st.error("Please provide an API key and target industry.")
+        st.error("⚠️ Please configure an API key in the sidebar and ensure an industry is entered.")
         st.stop()
 
     os.environ[env_var_name] = api_key_input
@@ -518,7 +547,7 @@ if btn_submitted:
 
     crew = Crew(agents=[quantifier_agent], tasks=[sizing_task], process=Process.sequential, max_rpm=crew_rpm_limit)
 
-    with st.status("⚡ Running Enterprise Sizing Engine...", expanded=True) as status:
+    with st.status("⚡ Orchestrating AI Agents & Conducting Financial Audits...", expanded=True) as status:
         try:
             result = crew.kickoff()
             structured_data: MarketSizingData = result.pydantic
@@ -559,22 +588,25 @@ if btn_submitted:
             
         except Exception as e:
             status.update(label="⚠️ Execution Notice", state="error", expanded=True)
-            st.error(f"An error occurred:\n\n`{str(e)}`")
+            st.error(f"An error occurred during agent execution:\n\n`{str(e)}`")
 
 # ==============================================================================
-# 7. RENDER DASHBOARD & CHATBOT
+# 7. RENDER DASHBOARD & CHATBOT (TABBED LAYOUT)
 # ==============================================================================
 if st.session_state.report_data:
     rd = st.session_state.report_data
     audit = rd.get("audit")
+    safe_market_name = re.sub(r'[^a-zA-Z0-9_-]', '_', rd["target_market"].lower())
+    combined_dossier = generate_combined_report(rd["markdown"], st.session_state.chat_history)
 
+    # Render Audit Banner outside of tabs for immediate visibility
     if audit:
         if audit["is_valid_mece"]:
             st.success(f"🛡️ **Algorithmic MECE Audit Passed** — Institutional Structural Integrity Score: {audit['score']:.0f}/100")
         else:
             st.error(f"⚠️ **Algorithmic MECE Audit Failed** — Institutional Structural Integrity Score: {audit['score']:.0f}/100")
             
-        with st.expander("🔍 Detailed Algorithmic Boundary Findings", expanded=not audit["is_valid_mece"]):
+        with st.expander("🔍 View Detailed Algorithmic Boundary Findings", expanded=not audit["is_valid_mece"]):
             if audit["critical_violations"]:
                 st.markdown("#### 🚨 Critical Violations (Semantic Overlap / Cross-Pillar Vendor Leakage):")
                 for viol in audit["critical_violations"]:
@@ -584,108 +616,124 @@ if st.session_state.report_data:
                 for warn in audit["warnings"]:
                     st.write(f"- {warn}")
     
-    st.markdown("[**⬇️ Jump directly to the Visual Dashboard**](#market-distribution)")
-    
-    chart_col1, chart_col2 = st.columns(2)
-    with chart_col1:
-        st.markdown(" Market Distribution ")
-        fig_sunburst = px.sunburst(rd["df"], path=['Main Pillar', 'Sub-Segment'], values='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
-        fig_sunburst.update_traces(textinfo="label+percent parent+value")
-        fig_sunburst.update_layout(margin=dict(t=10, l=10, r=10, b=10))
-        st.plotly_chart(fig_sunburst, use_container_width=True)
+    st.markdown("---")
+
+    # Grouping UI into Clean Tabs
+    tab_dash, tab_report, tab_chat = st.tabs(["📊 Market Visualizations", "📄 Full Dossier & Export", "💬 Analyst Q&A"])
+
+    with tab_dash:
+        st.subheader(f"Market Distribution for {rd['target_market']}")
+        chart_col1, chart_col2 = st.columns(2)
         
-    with chart_col2:
-        st.markdown(" Pillar Valuation ")
-        fig_bar = px.bar(rd["df"].groupby('Main Pillar', as_index=False)['Revenue ($B)'].sum().sort_values('Revenue ($B)', ascending=False), x='Main Pillar', y='Revenue ($B)', text='Revenue ($B)', color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism)
-        fig_bar.update_traces(texttemplate='$%{text:.2f}B', textposition='outside')
-        max_val = rd["df"].groupby('Main Pillar')['Revenue ($B)'].sum().max()
-        fig_bar.update_layout(showlegend=False, xaxis_title="", yaxis_title="Billions (USD)", yaxis=dict(range=[0, max_val * 1.15]), margin=dict(t=10, l=10, r=10, b=10))
-        st.plotly_chart(fig_bar, use_container_width=True)
+        with chart_col1:
+            fig_sunburst = px.sunburst(
+                rd["df"], path=['Main Pillar', 'Sub-Segment'], 
+                values='Revenue ($B)', color='Main Pillar', 
+                color_discrete_sequence=px.colors.qualitative.Prism,
+                template="plotly_dark"
+            )
+            fig_sunburst.update_traces(textinfo="label+percent parent+value")
+            fig_sunburst.update_layout(margin=dict(t=20, l=10, r=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_sunburst, use_container_width=True)
+            
+        with chart_col2:
+            fig_bar = px.bar(
+                rd["df"].groupby('Main Pillar', as_index=False)['Revenue ($B)'].sum().sort_values('Revenue ($B)', ascending=False), 
+                x='Main Pillar', y='Revenue ($B)', text='Revenue ($B)', 
+                color='Main Pillar', color_discrete_sequence=px.colors.qualitative.Prism,
+                template="plotly_dark"
+            )
+            fig_bar.update_traces(texttemplate='$%{text:.2f}B', textposition='outside')
+            max_val = rd["df"].groupby('Main Pillar')['Revenue ($B)'].sum().max()
+            fig_bar.update_layout(showlegend=False, xaxis_title="", yaxis_title="Billions (USD)", yaxis=dict(range=[0, max_val * 1.15]), margin=dict(t=20, l=10, r=10, b=10), paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
+            st.plotly_chart(fig_bar, use_container_width=True)
 
-    st.subheader(f"📊 Institutional Market Intelligence Brief: {rd['target_market']}")
-    
-    combined_dossier = generate_combined_report(rd["markdown"], st.session_state.chat_history)
-    safe_market_name = re.sub(r'[^a-zA-Z0-9_-]', '_', rd["target_market"].lower())
+    with tab_report:
+        st.subheader("📥 Export Dossier Data")
+        btn_col1, btn_col2, btn_col3 = st.columns(3)
+        
+        with btn_col1:
+            st.download_button(
+                label="📝 Download as Markdown",
+                data=combined_dossier,
+                file_name=f"Enterprise_Dossier_{safe_market_name}.md",
+                mime="text/markdown",
+                use_container_width=True
+            )
+        with btn_col2:
+            st.download_button(
+                label="📄 Download as PDF",
+                data=export_to_pdf(combined_dossier),
+                file_name=f"Enterprise_Dossier_{safe_market_name}.pdf",
+                mime="application/pdf",
+                use_container_width=True
+            )
+        with btn_col3:
+            csv_data = rd["df"].to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📊 Download Raw Data (CSV)",
+                data=csv_data,
+                file_name=f"Reconciled_Data_{safe_market_name}.csv",
+                mime="text/csv",
+                use_container_width=True
+            )
+        
+        st.divider()
+        st.markdown(rd["markdown"])
 
-    btn_col1, btn_col2, btn_col3, btn_col4 = st.columns([0.1, 0.3, 0.3, 0.3])
-    
-    with btn_col2:
-        st.download_button(
-            label="📥 Download Dossier (MD)",
-            data=combined_dossier,
-            file_name=f"Enterprise_Dossier_{safe_market_name}.md",
-            mime="text/markdown",
-            use_container_width=True
-        )
-    with btn_col3:
-        st.download_button(
-            label="📄 Download Dossier (PDF)",
-            data=export_to_pdf(combined_dossier),
-            file_name=f"Enterprise_Dossier_{safe_market_name}.pdf",
-            mime="application/pdf",
-            use_container_width=True
-        )
-    with btn_col4:
-        csv_data = rd["df"].to_csv(index=False).encode('utf-8')
-        st.download_button(
-            label="📊 Download Data (CSV)",
-            data=csv_data,
-            file_name=f"Reconciled_Data_{safe_market_name}.csv",
-            mime="text/csv",
-            use_container_width=True
-        )
+    with tab_chat:
+        st.subheader("Ask the Market Intelligence Assistant")
+        st.caption("Probe specific follow-up questions regarding vendors, segment breakdowns, or M&A strategy based directly on this report's findings.")
 
-    st.markdown("---")
-    st.markdown(rd["markdown"])
-    
-    # Interactive Assistant Chat
-    st.markdown("---")
-    st.subheader("💬 Ask the Market Intelligence Assistant")
-    st.caption("Ask specific follow-up questions regarding vendors, segment breakdowns, or M&A strategy based on this report.")
+        chat_container = st.container(height=400, border=False)
+        with chat_container:
+            if not st.session_state.chat_history:
+                st.info("👋 Hello! Ask me any questions about the data, market drivers, or specific vendors found in the generated report.")
+                
+            for msg in st.session_state.chat_history:
+                with st.chat_message(msg["role"]):
+                    st.markdown(msg["content"])
 
-    for msg in st.session_state.chat_history:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        if user_query := st.chat_input("e.g., What are the primary M&A targets within the highest-valued pillar?"):
+            st.session_state.chat_history.append({"role": "user", "content": user_query})
+            with chat_container:
+                with st.chat_message("user"):
+                    st.markdown(user_query)
 
-    if user_query := st.chat_input("e.g., What are the main M&A targets in the largest pillar?"):
-        st.session_state.chat_history.append({"role": "user", "content": user_query})
-        with st.chat_message("user"):
-            st.markdown(user_query)
-
-        with st.chat_message("assistant"):
-            with st.spinner("Analyzing report data..."):
-                try:
-                    import litellm
-                    os.environ[env_var_name] = st.session_state.api_key_cache
-                    
-                    system_prompt = f"""You are an elite investment analyst assistant.
+                with st.chat_message("assistant"):
+                    with st.spinner("Analyzing dossier data..."):
+                        try:
+                            import litellm
+                            os.environ[env_var_name] = st.session_state.api_key_cache
+                            
+                            system_prompt = f"""You are an elite investment analyst assistant.
 Here is the official market report you just generated:
 ---
 {rd["markdown"]}
 ---
 Answer the user's question accurately using ONLY the verified data from the report above."""
 
-                    response = litellm.completion(
-                        model=model_name,
-                        messages=[
-                            {"role": "system", "content": system_prompt},
-                            {"role": "user", "content": user_query}
-                        ],
-                        api_key=st.session_state.api_key_cache,
-                        base_url=custom_base_url
-                    )
-                    
-                    bot_reply = response.choices[0].message.content
+                            response = litellm.completion(
+                                model=model_name,
+                                messages=[
+                                    {"role": "system", "content": system_prompt},
+                                    {"role": "user", "content": user_query}
+                                ],
+                                api_key=st.session_state.api_key_cache,
+                                base_url=custom_base_url
+                            )
+                            
+                            bot_reply = response.choices[0].message.content
 
-                    # Automatically record tokens used during chat turn
-                    chat_tokens = extract_litellm_tokens(response, system_prompt + user_query + bot_reply)
-                    record_token_usage(provider_label, chat_tokens, category="chat")
+                            # Automatically record tokens used during chat turn
+                            chat_tokens = extract_litellm_tokens(response, system_prompt + user_query + bot_reply)
+                            record_token_usage(provider_label, chat_tokens, category="chat")
 
-                    st.markdown(bot_reply)
-                    st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
-                    
-                    # Rerun to dynamically refresh both the chat window and sidebar metric
-                    st.rerun() 
-                    
-                except Exception as e:
-                    st.error(f"Chatbot Error: {str(e)}")
+                            st.markdown(bot_reply)
+                            st.session_state.chat_history.append({"role": "assistant", "content": bot_reply})
+                            
+                            # Rerun to dynamically refresh both the chat window and sidebar metric
+                            st.rerun() 
+                            
+                        except Exception as e:
+                            st.error(f"Chatbot Error: {str(e)}")
